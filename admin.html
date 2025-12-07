@@ -1,311 +1,46 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Fails Admin – Pending Submissions</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root {
-      --bg: #020617;
-      --card: #0b1120;
-      --text: #e5e7eb;
-      --muted: #9ca3af;
-      --accent: #f97316;
-      --danger: #ef4444;
-      --radius: 1.1rem;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      min-height: 100vh;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
-      background: radial-gradient(circle at top, #020617, #000);
-      color: var(--text);
-      padding: 24px;
-    }
-    .shell {
-      max-width: 960px;
-      margin: 0 auto;
-    }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 16px;
-    }
-    h1 {
-      font-size: 1.5rem;
-    }
-    .sub {
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-    .info {
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin-bottom: 12px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 12px;
-    }
-    .card {
-      background: var(--card);
-      border-radius: var(--radius);
-      border: 1px solid rgba(148,163,184,0.4);
-      padding: 10px 10px 12px;
-      font-size: 0.8rem;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .tag {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.7rem;
-      padding: 3px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.5);
-      color: var(--muted);
-    }
-    .title {
-      font-size: 0.9rem;
-      font-weight: 600;
-      margin-top: 2px;
-    }
-    .meta {
-      color: var(--muted);
-      font-size: 0.75rem;
-    }
-    .btn-row {
-      display: flex;
-      gap: 6px;
-      margin-top: 6px;
-    }
-    button {
-      flex: 1;
-      border-radius: 999px;
-      border: none;
-      padding: 6px 8px;
-      font-size: 0.78rem;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-    }
-    .btn-approve {
-      background: linear-gradient(135deg, #22c55e, #16a34a);
-      color: #0f172a;
-    }
-    .btn-reject {
-      background: rgba(239,68,68,0.1);
-      color: #fecaca;
-      border: 1px solid rgba(239,68,68,0.5);
-    }
-    .btn-copy {
-      background: rgba(148,163,184,0.18);
-      color: var(--text);
-    }
-    a {
-      color: #93c5fd;
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-    .status-label {
-      font-size: 0.7rem;
-      color: var(--muted);
-    }
-    .empty {
-      font-size: 0.9rem;
-      color: var(--muted);
-      margin-top: 20px;
-    }
-    .top-actions {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      font-size: 0.78rem;
-    }
-    .pill {
-      padding: 4px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.5);
-      color: var(--muted);
-    }
-  </style>
-</head>
-<body>
-  <div class="shell">
-    <header>
-      <div>
-        <h1>Fails Admin</h1>
-        <div class="sub">Pending submissions review</div>
-      </div>
-      <div class="top-actions">
-        <span class="pill">View site: <a href="index.html">Fails.com</a></span>
-        <span class="pill">Submissions: <span id="countTotal">0</span> pending</span>
-      </div>
-    </header>
+<script>
+  const API_BASE = "https://inidan-finder-production.up.railway.app";
+  let pendingItems = [];
 
-    <p class="info">
-      Approve = content goes into the main pool (you’ll also get a JSON snippet to paste into <code>videos.json</code> if you’re doing it manually).  
-      Reject = marks submission as rejected in the backend.
-    </p>
+  async function loadPending() {
+    const res = await fetch(`${API_BASE}/api/submissions?status=pending`);
+    pendingItems = await res.json();
 
-    <div id="grid" class="grid"></div>
-    <div id="emptyState" class="empty" style="display:none;">
-      No pending submissions. Go touch grass or tweet about Fails Coin 🧡
-    </div>
-  </div>
+    const list = document.getElementById("pendingList");
+    list.innerHTML = "";
 
-  <script>
-    const grid = document.getElementById("grid");
-    const emptyState = document.getElementById("emptyState");
-    const countTotal = document.getElementById("countTotal");
+    pendingItems.forEach((item, i) => {
+      const div = document.createElement("div");
+      div.classList.add("pending-item");
+      div.innerHTML = `
+        <div><strong>${item.title}</strong></div>
+        <div>Type: ${item.mediaType}</div>
+        <div>URL: <a href="${item.src}" target="_blank">${item.src}</a></div>
+        <button onclick="handleApprove('${item.id}')">Approve</button>
+        <button onclick="handleReject('${item.id}')">Reject</button>
+      `;
+      list.appendChild(div);
+    });
+  }
 
-    async function fetchPending() {
-      try {
-        const res = await fetch("/api/submissions?status=pending");
-        if (!res.ok) throw new Error("Failed to fetch submissions");
-        const data = await res.json();
-        renderSubmissions(Array.isArray(data) ? data : []);
-      } catch (err) {
-        console.error(err);
-        grid.innerHTML = "<p style='color:#fca5a5;font-size:0.85rem;'>Error loading submissions.</p>";
-      }
-    }
+  async function handleApprove(id) {
+    await fetch(`${API_BASE}/api/submissions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "approved" })
+    });
+    loadPending();
+  }
 
-    function renderSubmissions(items) {
-      grid.innerHTML = "";
-      countTotal.textContent = items.length;
+  async function handleReject(id) {
+    await fetch(`${API_BASE}/api/submissions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "rejected" })
+    });
+    loadPending();
+  }
 
-      if (!items.length) {
-        emptyState.style.display = "block";
-        return;
-      }
-      emptyState.style.display = "none";
+  loadPending();
+</script>
 
-      for (const item of items) {
-        const card = document.createElement("div");
-        card.className = "card";
-        card.dataset.id = item.id;
-
-        const typeTag = document.createElement("div");
-        typeTag.className = "tag";
-        typeTag.textContent = (item.mediaType || "video").toUpperCase();
-
-        const title = document.createElement("div");
-        title.className = "title";
-        title.textContent = item.title || "(no title)";
-
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        meta.innerHTML = `
-          <div>From: ${item.submittedBy || "Anonymous"}</div>
-          ${item.wallet ? `<div>Wallet: ${item.wallet}</div>` : ""}
-          <div>Link: <a href="${item.src}" target="_blank">Open media</a></div>
-        `;
-
-        const statusLabel = document.createElement("div");
-        statusLabel.className = "status-label";
-        statusLabel.textContent = `ID: ${item.id || "(no id)"}`;
-
-        const btnRow = document.createElement("div");
-        btnRow.className = "btn-row";
-
-        const approveBtn = document.createElement("button");
-        approveBtn.className = "btn-approve";
-        approveBtn.textContent = "✅ Approve";
-        approveBtn.addEventListener("click", () => handleApprove(item, card));
-
-        const rejectBtn = document.createElement("button");
-        rejectBtn.className = "btn-reject";
-        rejectBtn.textContent = "🛑 Reject";
-        rejectBtn.addEventListener("click", () => handleReject(item, card));
-
-        const copyBtn = document.createElement("button");
-        copyBtn.className = "btn-copy";
-        copyBtn.textContent = "📋 Copy JSON";
-        copyBtn.addEventListener("click", () => copyJsonSnippet(item));
-
-        btnRow.appendChild(approveBtn);
-        btnRow.appendChild(rejectBtn);
-        btnRow.appendChild(copyBtn);
-
-        card.appendChild(typeTag);
-        card.appendChild(title);
-        card.appendChild(meta);
-        card.appendChild(statusLabel);
-        card.appendChild(btnRow);
-
-        grid.appendChild(card);
-      }
-    }
-
-    async function handleApprove(item, cardEl) {
-      try {
-        const res = await fetch(`/api/submissions/${encodeURIComponent(item.id)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "approved" })
-        });
-        if (!res.ok) throw new Error("Failed to approve");
-        cardEl.remove();
-        decrementCount();
-      } catch (err) {
-        console.error(err);
-        alert("Error approving submission");
-      }
-    }
-
-    async function handleReject(item, cardEl) {
-      const confirmReject = confirm("Reject this submission?");
-      if (!confirmReject) return;
-      try {
-        const res = await fetch(`/api/submissions/${encodeURIComponent(item.id)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "rejected" })
-        });
-        if (!res.ok) throw new Error("Failed to reject");
-        cardEl.remove();
-        decrementCount();
-      } catch (err) {
-        console.error(err);
-        alert("Error rejecting submission");
-      }
-    }
-
-    function decrementCount() {
-      const current = parseInt(countTotal.textContent || "0", 10);
-      const next = Math.max(current - 1, 0);
-      countTotal.textContent = next;
-      if (next === 0) {
-        emptyState.style.display = "block";
-      }
-    }
-
-    async function copyJsonSnippet(item) {
-      // This snippet matches your videos.json / media item shape
-      const snippetObj = {
-        mediaType: item.mediaType || "video",
-        src: item.src,
-        title: item.title || "Fail"
-      };
-      const snippet = JSON.stringify(snippetObj, null, 2);
-      try {
-        await navigator.clipboard.writeText(snippet);
-        alert("JSON snippet copied! Paste into videos.json when you’re ready.");
-      } catch (err) {
-        console.error(err);
-        alert("Could not copy to clipboard. Check console for the snippet.");
-      }
-      console.log("Snippet:", snippet);
-    }
-
-    fetchPending();
-  </script>
-</body>
-</html>
