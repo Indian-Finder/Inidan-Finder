@@ -100,6 +100,11 @@ function requireAdmin(req, res, next) {
     req.query.adminSecret ||
     (req.body && req.body.adminSecret);
 
+  console.log("Admin auth check:", {
+    env: ADMIN_SECRET,
+    header: secret
+  });
+
   if (secret !== ADMIN_SECRET) {
     return res.status(401).json({ error: "Unauthorized" });
   }
