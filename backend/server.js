@@ -15,6 +15,7 @@ const UPLOAD_DIR = path.join(__dirname, "uploads");
 
 // IMPORTANT: set this in Railway → Variables
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "changeme-super-secret";
+console.log("ADMIN_SECRET from env is:", JSON.stringify(ADMIN_SECRET));
 
 // --- Helpers ---------------------------------------------------
 
