@@ -94,22 +94,29 @@ const upload = multer({ storage });
 
 // --- Admin auth middleware -------------------------------------
 
+// --- Admin auth middleware -------------------------------------
 function requireAdmin(req, res, next) {
-  const secret =
-    req.header("x-admin-secret") ||
-    req.query.adminSecret ||
-    (req.body && req.body.adminSecret);
+  const secretFromHeader = req.get("x-admin-secret");
+  const secretFromQuery = req.query.adminSecret;
+  const provided = (secretFromHeader || secretFromQuery || "").trim();
+
+  const expected = (process.env.ADMIN_SECRET || "changeme-super-secret").trim();
 
   console.log("Admin auth check:", {
-    env: ADMIN_SECRET,
-    header: secret
+    expected,
+    provided,
+    fromHeader: secretFromHeader,
+    fromQuery: secretFromQuery
   });
 
-  if (secret !== ADMIN_SECRET) {
+  if (provided !== expected) {
     return res.status(401).json({ error: "Unauthorized" });
   }
+
+  console.log("Admin auth SUCCESS for:", provided);
   next();
 }
+
 
 // --- App setup -------------------------------------------------
 
