@@ -1,0 +1,24 @@
+{
+  "name": "inidan-finder",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Indian-Finder/Inidan-Finder.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Indian-Finder/Inidan-Finder/issues"
+  },
+  "homepage": "https://github.com/Indian-Finder/Inidan-Finder#readme",
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
+}
