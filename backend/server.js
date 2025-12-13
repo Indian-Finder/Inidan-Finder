@@ -3,29 +3,38 @@ try { require("dotenv").config(); } catch (e) {}
 const express = require("express");
 const session = require("express-session");
 const cookieParser = require("cookie-parser");
-const cors = require("cors");
 const crypto = require("crypto");
 const fetch = require("node-fetch");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// ---- CORS (so your frontend can call backend w/ cookies) ----
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "*";
-app.use(
-  cors({
-    origin: FRONTEND_ORIGIN === "*" ? true : FRONTEND_ORIGIN,
-    credentials: true,
-  })
-);
+// --------- config helpers ----------
+const FRONTEND_ORIGIN =
+  process.env.FRONTEND_ORIGIN ||
+  process.env.PUBLIC_SITE_URL ||
+  ""; // optional, but helpful
 
+const COOKIE_SECURE = String(process.env.COOKIE_SECURE || "true") === "true";
+const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || "none";
+
+// Accept either X_* or TWITTER_* env var names
+const X_CLIENT_ID = process.env.X_CLIENT_ID || process.env.TWITTER_CLIENT_ID;
+const X_CLIENT_SECRET =
+  process.env.X_CLIENT_SECRET || process.env.TWITTER_CLIENT_SECRET;
+
+// For OAuth redirect URL, accept either name.
+// Prefer X_REDIRECT_URI (recommended), else TWITTER_CALLBACK_URL.
+const X_REDIRECT_URI =
+  process.env.X_REDIRECT_URI || process.env.TWITTER_CALLBACK_URL;
+
+const TWITTER_SUCCESS_REDIRECT =
+  process.env.TWITTER_SUCCESS_REDIRECT || FRONTEND_ORIGIN || "/";
+
+// --------- middleware ----------
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
 
-// If you're behind Railway / proxies, this helps secure cookies work properly:
-app.set("trust proxy", 1);
-
-// ---- Sessions (stores OAuth state + tokens) ----
 app.use(
   session({
     name: "fails.sid",
@@ -34,14 +43,40 @@ app.use(
     saveUninitialized: true,
     cookie: {
       httpOnly: true,
-      secure: process.env.COOKIE_SECURE === "true", // set true on Railway
-      sameSite: process.env.COOKIE_SAMESITE || "none", // "none" for cross-site
+      secure: COOKIE_SECURE,
+      sameSite: COOKIE_SAMESITE,
       maxAge: 30 * 24 * 60 * 60 * 1000,
     },
   })
 );
 
-// -------------------- helpers --------------------
+// If you want to allow frontend JS to call your API with cookies:
+if (FRONTEND_ORIGIN) {
+  const cors = require("cors");
+  app.use(
+    cors({
+      origin: FRONTEND_ORIGIN,
+      credentials: true,
+    })
+  );
+}
+
+// --------- routes ----------
+app.get("/api/status", (req, res) => {
+  res.json({
+    ok: true,
+    service: "inidan-finder-backend",
+    hasXClient: Boolean(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI),
+  });
+});
+
+// Avoid "Cannot GET /" — redirect to your site (or return a tiny message)
+app.get("/", (req, res) => {
+  if (process.env.PUBLIC_SITE_URL) return res.redirect(process.env.PUBLIC_SITE_URL);
+  res.type("text").send("Backend is running. Try /api/status");
+});
+
+// --------- OAuth2 PKCE helpers ----------
 function base64url(buf) {
   return buf
     .toString("base64")
@@ -49,148 +84,118 @@ function base64url(buf) {
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
 }
-function sha256(buf) {
-  return crypto.createHash("sha256").update(buf).digest();
+function sha256Base64Url(str) {
+  return base64url(crypto.createHash("sha256").update(str).digest());
 }
 
-const TW_CLIENT_ID = process.env.TWITTER_CLIENT_ID;
-const TW_CLIENT_SECRET = process.env.TWITTER_CLIENT_SECRET; // optional depending on your app type
-const TW_CALLBACK = process.env.TWITTER_CALLBACK_URL;
-const TW_SCOPES =
-  process.env.TWITTER_SCOPES || "tweet.read tweet.write users.read offline.access";
-
-// Token refresh helper (OAuth2)
-async function ensureTwitterToken(req) {
-  const t = req.session.twitter;
-  if (!t?.access_token) throw new Error("Not connected to Twitter");
-
-  // If we have expiry info and it's still valid, good.
-  if (t.expires_at && Date.now() < t.expires_at - 30_000) return t.access_token;
-
-  // Refresh if possible
-  if (!t.refresh_token) return t.access_token;
-
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: t.refresh_token,
-    client_id: TW_CLIENT_ID,
-  });
-
-  // If your app is "confidential", Twitter wants basic auth too:
-  const headers = { "Content-Type": "application/x-www-form-urlencoded" };
-  if (TW_CLIENT_SECRET) {
-    const basic = Buffer.from(`${TW_CLIENT_ID}:${TW_CLIENT_SECRET}`).toString("base64");
-    headers.Authorization = `Basic ${basic}`;
+function requireXConfig() {
+  if (!X_CLIENT_ID || !X_CLIENT_SECRET || !X_REDIRECT_URI) {
+    const missing = [];
+    if (!X_CLIENT_ID) missing.push("X_CLIENT_ID (or TWITTER_CLIENT_ID)");
+    if (!X_CLIENT_SECRET) missing.push("X_CLIENT_SECRET (or TWITTER_CLIENT_SECRET)");
+    if (!X_REDIRECT_URI) missing.push("X_REDIRECT_URI (or TWITTER_CALLBACK_URL)");
+    const err = new Error("Missing: " + missing.join(", "));
+    err.status = 500;
+    throw err;
   }
-
-  const r = await fetch("https://api.twitter.com/2/oauth2/token", {
-    method: "POST",
-    headers,
-    body,
-  });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j?.error_description || j?.error || "Refresh failed");
-
-  const expiresIn = (j.expires_in || 7200) * 1000;
-  req.session.twitter = {
-    ...t,
-    access_token: j.access_token,
-    refresh_token: j.refresh_token || t.refresh_token,
-    expires_at: Date.now() + expiresIn,
-  };
-  return req.session.twitter.access_token;
 }
 
-// -------------------- routes --------------------
-app.get("/api/status", (req, res) => {
-  res.json({
-    ok: true,
-    message: "API is running",
-    hasTwitterClientId: !!TW_CLIENT_ID,
-    hasTwitterCallback: !!TW_CALLBACK,
-    frontendOrigin: FRONTEND_ORIGIN,
-  });
-});
-
-// -------- TWITTER: start login (OAuth2 PKCE) --------
+// Start login: redirects user to X/Twitter authorize URL
 app.get("/api/twitter/login", (req, res) => {
-  if (!TW_CLIENT_ID || !TW_CALLBACK) {
-    return res.status(400).json({
-      ok: false,
-      error: "Missing TWITTER_CLIENT_ID or TWITTER_CALLBACK_URL",
-    });
+  try {
+    requireXConfig();
+
+    const state = base64url(crypto.randomBytes(16));
+    const codeVerifier = base64url(crypto.randomBytes(32));
+    const codeChallenge = sha256Base64Url(codeVerifier);
+
+    req.session.x_oauth_state = state;
+    req.session.x_code_verifier = codeVerifier;
+
+    const authorizeUrl =
+      "https://twitter.com/i/oauth2/authorize" +
+      `?response_type=code` +
+      `&client_id=${encodeURIComponent(X_CLIENT_ID)}` +
+      `&redirect_uri=${encodeURIComponent(X_REDIRECT_URI)}` +
+      `&scope=${encodeURIComponent("tweet.read tweet.write users.read offline.access")}` +
+      `&state=${encodeURIComponent(state)}` +
+      `&code_challenge=${encodeURIComponent(codeChallenge)}` +
+      `&code_challenge_method=S256`;
+
+    // Redirect (best UX). If you prefer JSON, change to res.json({url: authorizeUrl})
+    return res.redirect(authorizeUrl);
+  } catch (e) {
+    return res.status(e.status || 400).json({ ok: false, error: e.message });
   }
-
-  const codeVerifier = base64url(crypto.randomBytes(32));
-  const codeChallenge = base64url(sha256(codeVerifier));
-  const state = base64url(crypto.randomBytes(16));
-
-  req.session.twitter_oauth = { codeVerifier, state };
-
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: TW_CLIENT_ID,
-    redirect_uri: TW_CALLBACK,
-    scope: TW_SCOPES,
-    state,
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
-  });
-
-  const url = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
-  res.json({ ok: true, url });
 });
 
-// -------- TWITTER: callback (exchange code for tokens) --------
+// Callback from X/Twitter
 app.get("/api/twitter/callback", async (req, res) => {
   try {
-    const { code, state } = req.query;
+    requireXConfig();
+
+    const { code, state } = req.query || {};
     if (!code) return res.status(400).send("Missing code");
+    if (!state) return res.status(400).send("Missing state");
 
-    const oauth = req.session.twitter_oauth;
-    if (!oauth?.codeVerifier) return res.status(400).send("Missing session verifier");
-    if (oauth.state !== state) return res.status(400).send("State mismatch");
-
-    const body = new URLSearchParams({
-      grant_type: "authorization_code",
-      code: String(code),
-      redirect_uri: TW_CALLBACK,
-      client_id: TW_CLIENT_ID,
-      code_verifier: oauth.codeVerifier,
-    });
-
-    const headers = { "Content-Type": "application/x-www-form-urlencoded" };
-    if (TW_CLIENT_SECRET) {
-      const basic = Buffer.from(`${TW_CLIENT_ID}:${TW_CLIENT_SECRET}`).toString("base64");
-      headers.Authorization = `Basic ${basic}`;
+    if (!req.session.x_oauth_state || state !== req.session.x_oauth_state) {
+      return res.status(400).send("Invalid state");
+    }
+    if (!req.session.x_code_verifier) {
+      return res.status(400).send("Missing code_verifier in session");
     }
 
-    const r = await fetch("https://api.twitter.com/2/oauth2/token", {
+    const tokenRes = await fetch("https://api.twitter.com/2/oauth2/token", {
       method: "POST",
-      headers,
-      body,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization:
+          "Basic " +
+          Buffer.from(`${X_CLIENT_ID}:${X_CLIENT_SECRET}`).toString("base64"),
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: String(code),
+        redirect_uri: String(X_REDIRECT_URI),
+        code_verifier: String(req.session.x_code_verifier),
+      }).toString(),
     });
-    const j = await r.json();
-    if (!r.ok) throw new Error(j?.error_description || j?.error || "Token exchange failed");
 
-    const expiresIn = (j.expires_in || 7200) * 1000;
-    req.session.twitter = {
-      access_token: j.access_token,
-      refresh_token: j.refresh_token,
-      expires_at: Date.now() + expiresIn,
-    };
+    const tokenJson = await tokenRes.json();
+    if (!tokenRes.ok) {
+      return res.status(400).json({ ok: false, error: tokenJson });
+    }
 
-    // optional: send user back to your frontend
-    const redirectTo = process.env.TWITTER_SUCCESS_REDIRECT || FRONTEND_ORIGIN;
-    return res.redirect(redirectTo);
+    // Store tokens in session
+    req.session.x_access_token = tokenJson.access_token;
+    req.session.x_refresh_token = tokenJson.refresh_token;
+    req.session.x_token_type = tokenJson.token_type;
+    req.session.x_expires_in = tokenJson.expires_in;
+
+    // cleanup
+    delete req.session.x_oauth_state;
+    delete req.session.x_code_verifier;
+
+    return res.redirect(TWITTER_SUCCESS_REDIRECT);
   } catch (e) {
     return res.status(500).send(`Twitter callback error: ${e.message}`);
   }
 });
 
+async function ensureXToken(req) {
+  const token = req.session.x_access_token;
+  if (!token) {
+    const err = new Error("Not logged in to X/Twitter. Hit /api/twitter/login first.");
+    err.status = 401;
+    throw err;
+  }
+  return token;
+}
+
+// Get logged-in user
 app.get("/api/twitter/me", async (req, res) => {
   try {
-    const token = await ensureTwitterToken(req);
+    const token = await ensureXToken(req);
     const r = await fetch("https://api.twitter.com/2/users/me", {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -198,7 +203,7 @@ app.get("/api/twitter/me", async (req, res) => {
     if (!r.ok) return res.status(400).json({ ok: false, error: j });
     res.json({ ok: true, me: j });
   } catch (e) {
-    res.status(401).json({ ok: false, error: e.message });
+    res.status(e.status || 500).json({ ok: false, error: e.message });
   }
 });
 
@@ -210,7 +215,7 @@ app.post("/api/twitter/tweet", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Missing text" });
     }
 
-    const token = await ensureTwitterToken(req);
+    const token = await ensureXToken(req);
     const r = await fetch("https://api.twitter.com/2/tweets", {
       method: "POST",
       headers: {
@@ -219,25 +224,17 @@ app.post("/api/twitter/tweet", async (req, res) => {
       },
       body: JSON.stringify({ text }),
     });
+
     const j = await r.json();
     if (!r.ok) return res.status(400).json({ ok: false, error: j });
     res.json({ ok: true, tweet: j });
   } catch (e) {
-    res.status(401).json({ ok: false, error: e.message });
+    res.status(e.status || 500).json({ ok: false, error: e.message });
   }
 });
 
-app.post("/api/twitter/logout", (req, res) => {
-  req.session.twitter = null;
-  req.session.twitter_oauth = null;
-  res.json({ ok: true });
-});
-
-// Root
-app.get("/", (req, res) => res.send("Backend is running. Try /api/status"));
-
 app.listen(PORT, () => {
-  console.log(`Fails API running on port ${PORT}`);
+  console.log(`Inidan Finder API running on port ${PORT}`);
 });
 
 
