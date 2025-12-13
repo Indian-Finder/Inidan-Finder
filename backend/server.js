@@ -268,6 +268,7 @@ app.post("/api/twitter/tweet", async (req, res) => {
 // -------------------- Start --------------------
 app.listen(PORT, () => {
   console.log(`Indian Finder API running on port ${PORT}`);
+});
 
 
 
