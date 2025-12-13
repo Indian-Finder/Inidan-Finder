@@ -9,11 +9,11 @@ const fetch = require("node-fetch");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// --------- config helpers ----------
+// -------------------- Config --------------------
 const FRONTEND_ORIGIN =
   process.env.FRONTEND_ORIGIN ||
   process.env.PUBLIC_SITE_URL ||
-  ""; // optional, but helpful
+  ""; // optional (recommended if frontend is on a different domain)
 
 const COOKIE_SECURE = String(process.env.COOKIE_SECURE || "true") === "true";
 const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || "none";
@@ -23,15 +23,17 @@ const X_CLIENT_ID = process.env.X_CLIENT_ID || process.env.TWITTER_CLIENT_ID;
 const X_CLIENT_SECRET =
   process.env.X_CLIENT_SECRET || process.env.TWITTER_CLIENT_SECRET;
 
-// For OAuth redirect URL, accept either name.
-// Prefer X_REDIRECT_URI (recommended), else TWITTER_CALLBACK_URL.
+// Prefer X_REDIRECT_URI; fall back to TWITTER_CALLBACK_URL
 const X_REDIRECT_URI =
   process.env.X_REDIRECT_URI || process.env.TWITTER_CALLBACK_URL;
 
+// Where to send the user after a successful OAuth callback
 const TWITTER_SUCCESS_REDIRECT =
-  process.env.TWITTER_SUCCESS_REDIRECT || FRONTEND_ORIGIN || "/";
+  process.env.TWITTER_SUCCESS_REDIRECT ||
+  FRONTEND_ORIGIN ||
+  "/";
 
-// --------- middleware ----------
+// -------------------- Middleware --------------------
 app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
 
@@ -50,7 +52,7 @@ app.use(
   })
 );
 
-// If you want to allow frontend JS to call your API with cookies:
+// Enable CORS with credentials if you have a separate frontend origin
 if (FRONTEND_ORIGIN) {
   const cors = require("cors");
   app.use(
@@ -61,22 +63,7 @@ if (FRONTEND_ORIGIN) {
   );
 }
 
-// --------- routes ----------
-app.get("/api/status", (req, res) => {
-  res.json({
-    ok: true,
-    service: "inidan-finder-backend",
-    hasXClient: Boolean(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI),
-  });
-});
-
-// Avoid "Cannot GET /" — redirect to your site (or return a tiny message)
-app.get("/", (req, res) => {
-  if (process.env.PUBLIC_SITE_URL) return res.redirect(process.env.PUBLIC_SITE_URL);
-  res.type("text").send("Backend is running. Try /api/status");
-});
-
-// --------- OAuth2 PKCE helpers ----------
+// -------------------- Helpers --------------------
 function base64url(buf) {
   return buf
     .toString("base64")
@@ -84,6 +71,7 @@ function base64url(buf) {
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
 }
+
 function sha256Base64Url(str) {
   return base64url(crypto.createHash("sha256").update(str).digest());
 }
@@ -101,7 +89,7 @@ function requireXConfig() {
 }
 
 async function ensureXToken(req) {
-  const token = req.session.x_access_token;
+  const token = req.session?.x_access_token;
   if (!token) {
     const err = new Error("Not logged in to X/Twitter. Hit /api/x/connect first.");
     err.status = 401;
@@ -110,25 +98,32 @@ async function ensureXToken(req) {
   return token;
 }
 
-/**
- * --------- NEW: Convenience connect route ----------
- * Frontend button can just hit /api/x/connect
- */
-app.get("/api/x/connect", (req, res) => {
-  return res.redirect("/api/twitter/login");
+// -------------------- Health --------------------
+app.get("/api/status", (req, res) => {
+  res.json({
+    ok: true,
+    service: "inidan-finder-backend",
+    hasXClient: Boolean(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI),
+  });
 });
 
-/**
- * --------- NEW: Status route for UI ----------
- * Returns: { connected: boolean, username?: string }
- */
+app.get("/", (req, res) => {
+  if (process.env.PUBLIC_SITE_URL) return res.redirect(process.env.PUBLIC_SITE_URL);
+  res.type("text").send("Backend is running. Try /api/status");
+});
+
+// -------------------- X Connect / Status --------------------
+// Convenience route your frontend can use
+app.get("/api/x/connect", (req, res) => res.redirect("/api/twitter/login"));
+
+// For your UI: { connected: boolean, username: string|null }
 app.get("/api/x/status", (req, res) => {
   const connected = Boolean(req.session?.x_access_token);
   const username = req.session?.x_username || null;
   res.json({ connected, username });
 });
 
-// Start login: redirects user to X/Twitter authorize URL
+// -------------------- OAuth2 PKCE Login --------------------
 app.get("/api/twitter/login", (req, res) => {
   try {
     requireXConfig();
@@ -140,12 +135,16 @@ app.get("/api/twitter/login", (req, res) => {
     req.session.x_oauth_state = state;
     req.session.x_code_verifier = codeVerifier;
 
+    // ✅ Minimal scopes for "Connect + show username"
+    // (avoids the X approval error when your app isn't allowed for write/offline scopes yet)
+    const scopes = "users.read tweet.read";
+
     const authorizeUrl =
       "https://twitter.com/i/oauth2/authorize" +
       `?response_type=code` +
       `&client_id=${encodeURIComponent(X_CLIENT_ID)}` +
       `&redirect_uri=${encodeURIComponent(X_REDIRECT_URI)}` +
-      `&scope=${encodeURIComponent("tweet.read tweet.write users.read offline.access")}` +
+      `&scope=${encodeURIComponent(scopes)}` +
       `&state=${encodeURIComponent(state)}` +
       `&code_challenge=${encodeURIComponent(codeChallenge)}` +
       `&code_challenge_method=S256`;
@@ -156,7 +155,7 @@ app.get("/api/twitter/login", (req, res) => {
   }
 });
 
-// Callback from X/Twitter
+// Callback
 app.get("/api/twitter/callback", async (req, res) => {
   try {
     requireXConfig();
@@ -193,19 +192,15 @@ app.get("/api/twitter/callback", async (req, res) => {
       return res.status(400).json({ ok: false, error: tokenJson });
     }
 
-    // Store tokens in session
     req.session.x_access_token = tokenJson.access_token;
-    req.session.x_refresh_token = tokenJson.refresh_token;
     req.session.x_token_type = tokenJson.token_type;
     req.session.x_expires_in = tokenJson.expires_in;
 
-    // cleanup
+    // Cleanup temp PKCE/state
     delete req.session.x_oauth_state;
     delete req.session.x_code_verifier;
 
-    /**
-     * --------- NEW: Fetch username and store it ----------
-     */
+    // Fetch username and store for UI
     try {
       const meRes = await fetch("https://api.twitter.com/2/users/me", {
         headers: { Authorization: `Bearer ${req.session.x_access_token}` },
@@ -215,21 +210,19 @@ app.get("/api/twitter/callback", async (req, res) => {
         req.session.x_username = meJson.data.username;
         req.session.x_user_id = meJson.data.id;
       } else {
-        // Not fatal — tokens are still stored
         req.session.x_username = null;
       }
     } catch (e) {
       req.session.x_username = null;
     }
 
-    // Make sure session persists before redirect (important in some hosting setups)
     return req.session.save(() => res.redirect(TWITTER_SUCCESS_REDIRECT));
   } catch (e) {
     return res.status(500).send(`Twitter callback error: ${e.message}`);
   }
 });
 
-// Get logged-in user
+// -------------------- API: Me --------------------
 app.get("/api/twitter/me", async (req, res) => {
   try {
     const token = await ensureXToken(req);
@@ -244,7 +237,9 @@ app.get("/api/twitter/me", async (req, res) => {
   }
 });
 
-// Post a tweet (text only)
+// -------------------- API: Tweet (optional) --------------------
+// NOTE: This will fail until you request tweet.write scope and your app is allowed.
+// Keep it here for later; it's safe to leave.
 app.post("/api/twitter/tweet", async (req, res) => {
   try {
     const { text } = req.body || {};
@@ -270,9 +265,9 @@ app.post("/api/twitter/tweet", async (req, res) => {
   }
 });
 
+// -------------------- Start --------------------
 app.listen(PORT, () => {
-  console.log(`Inidan Finder API running on port ${PORT}`);
-});
+  console.log(`Indian Finder API running on port ${PORT}`);
 
 
 
