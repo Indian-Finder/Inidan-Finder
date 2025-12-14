@@ -29,8 +29,13 @@ const SESSION_SECRET =
 const X_CLIENT_ID = process.env.X_CLIENT_ID || "";
 const X_CLIENT_SECRET = process.env.X_CLIENT_SECRET || "";
 const X_REDIRECT_URI = process.env.X_REDIRECT_URI || "";
-const X_SCOPES = (process.env.X_SCOPES ||
-  "tweet.read tweet.write users.read offline.access").trim();
+const X_SCOPES = (
+  process.env.X_SCOPES ||
+  "tweet.read tweet.write users.read offline.access"
+).trim();
+
+// Community to post into
+const X_COMMUNITY_ID = "2000288800996827192";
 
 function dlog(...args) {
   if (DEBUG) console.log("[DEBUG]", ...args);
@@ -134,6 +139,14 @@ function inferMediaTypeFromUrl(u) {
 function requireAdmin(req, res, next) {
   if (req.session?.isAdmin) return next();
   return res.status(401).json({ ok: false, error: "Unauthorized" });
+}
+
+function requireXAuth(req, res, next) {
+  const access_token = req.session?.x?.access_token;
+  if (!access_token) {
+    return res.status(401).json({ ok: false, error: "Not connected to X" });
+  }
+  next();
 }
 
 /* =====================
@@ -240,8 +253,6 @@ app.get("/api/media", (_req, res) => {
 });
 
 app.post("/api/media/:id/upvote", (req, res) => {
-  // alias to new endpoint behavior
-  req.params.id = req.params.id;
   const id = req.params.id;
   const videos = readVideos();
   const fail = videos.find((v) => v.id === id);
@@ -411,31 +422,85 @@ app.get("/api/x/callback", async (req, res) => {
   return res.redirect(`${PUBLIC_SITE_URL}/index.html?x=connected`);
 });
 
-app.post("/api/x/tweet", async (req, res) => {
-  const access_token = req.session?.x?.access_token;
-  if (!access_token) {
-    return res.status(401).json({ ok: false, error: "Not connected to X" });
-  }
-
-  const text = String(req.body?.text || "").trim();
-  if (!text) return res.status(400).json({ ok: false, error: "Missing text" });
-
+/* =====================
+   X HELPERS
+===================== */
+async function postTweet(access_token, payload) {
   const tweetRes = await fetch("https://api.twitter.com/2/tweets", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${access_token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify(payload),
   });
 
   const json = await tweetRes.json();
   if (!tweetRes.ok) {
     console.error("Tweet failed:", json);
-    return res.status(500).json({ ok: false, error: "Tweet failed", details: json });
+    const msg =
+      json?.detail ||
+      json?.title ||
+      json?.error ||
+      "Tweet failed";
+    const err = new Error(msg);
+    err.details = json;
+    throw err;
+  }
+  return json;
+}
+
+/* =====================
+   X: Share fail to Community
+   POST body: { failUrl: "https://indian-finder.com/fail.html?id=..." }
+===================== */
+app.post("/api/x/share-fail", requireXAuth, async (req, res) => {
+  const access_token = req.session?.x?.access_token;
+
+  const failUrl = String(req.body?.failUrl || "").trim();
+  if (!failUrl) {
+    return res.status(400).json({ ok: false, error: "Missing failUrl" });
   }
 
-  res.json({ ok: true, tweet: json });
+  const text = `fail Found! ${failUrl}`;
+
+  try {
+    const tweetJson = await postTweet(access_token, {
+      text,
+      community_id: X_COMMUNITY_ID,
+    });
+
+    res.json({ ok: true, tweet: tweetJson });
+  } catch (err) {
+    console.error("X share-fail error:", err?.details || err);
+    res.status(500).json({
+      ok: false,
+      error: "Failed to share to X community",
+      details: err?.details || null,
+    });
+  }
+});
+
+/* =====================
+   X: Generic tweet (kept)
+===================== */
+app.post("/api/x/tweet", requireXAuth, async (req, res) => {
+  const access_token = req.session?.x?.access_token;
+
+  const text = String(req.body?.text || "").trim();
+  if (!text) return res.status(400).json({ ok: false, error: "Missing text" });
+
+  try {
+    const tweetJson = await postTweet(access_token, { text });
+    res.json({ ok: true, tweet: tweetJson });
+  } catch (err) {
+    console.error("Tweet failed:", err?.details || err);
+    res.status(500).json({
+      ok: false,
+      error: "Tweet failed",
+      details: err?.details || null,
+    });
+  }
 });
 
 /* =====================
@@ -456,10 +521,16 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`🔥 fails backend running on ${PORT}`);
   console.log(`[CFG] PUBLIC_SITE_URL=${PUBLIC_SITE_URL}`);
-  console.log(`[CFG] COOKIE_SECURE=${COOKIE_SECURE} COOKIE_SAMESITE=${COOKIE_SAMESITE}`);
+  console.log(
+    `[CFG] COOKIE_SECURE=${COOKIE_SECURE} COOKIE_SAMESITE=${COOKIE_SAMESITE}`
+  );
   console.log(`[CFG] Volume paths: uploads=${UPLOADS_DIR} videos=${VIDEOS_FILE}`);
-  console.log(`[CFG] X configured=${!!(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI)} redirect="${X_REDIRECT_URI}"`);
+  console.log(
+    `[CFG] X configured=${!!(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI)} redirect="${X_REDIRECT_URI}"`
+  );
+  console.log(`[CFG] X community_id=${X_COMMUNITY_ID}`);
 });
+
 
 
 
