@@ -504,7 +504,10 @@
     lastIndex = index;
 
     const item = MEDIA_ITEMS[index];
-    currentItem = item;
+currentItem = item;
+
+updateViewFailLink(); 
+
 
     renderMedia(item);
     videoTitleEl.textContent = item.title || "Fail";
