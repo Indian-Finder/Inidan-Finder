@@ -58,6 +58,11 @@
       color:#0b1020;
       font-weight:800;
     }
+    .btn:disabled{
+      opacity:.65;
+      cursor:not-allowed;
+      transform:none !important;
+    }
     .player{
       width:100%;
       aspect-ratio:16/9;
@@ -106,7 +111,7 @@
         <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end">
           <a class="btn" href="index.html">⬅ Back</a>
           <button class="btn" id="copyBtn">🔗 Copy link</button>
-          <button class="btn primary" id="shareXBtn">🐦 Share to X</button>
+          <button class="btn primary" id="shareXBtn">𝕏 Share to X</button>
         </div>
       </header>
 
@@ -130,6 +135,7 @@
   <div class="toast" id="toast">Copied!</div>
 
 <script>
+  // Keep your backend URL here (or make it dynamic later)
   const API_BASE = "https://inidan-finder-production-c13b.up.railway.app";
 
   const qs = new URLSearchParams(location.search);
@@ -178,10 +184,8 @@
     failTitle.textContent = f.title || "Fail";
     failAuthor.textContent = f.author ? `by ${f.author}` : "";
 
-    // download
     downloadBtn.href = mediaUrl;
 
-    // player
     player.innerHTML = "";
     if (mediaType === "image") {
       const img = document.createElement("img");
@@ -197,7 +201,6 @@
       player.appendChild(vid);
     }
 
-    // Update meta tags for nicer embeds (best-effort)
     document.title = (f.title ? `${f.title} – Fails` : "View Fail");
   }
 
@@ -235,14 +238,53 @@
     }
   });
 
+  // ✅ NEW: Share to X via your backend so it posts to the community
   shareXBtn.addEventListener("click", async () => {
-    // simplest + reliable: open tweet intent with the link
-    const text = currentFail?.title
-      ? `${currentFail.title} 😂`
-      : `New fail just dropped 😂`;
-    const url = location.href;
-    const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-    window.open(intent, "_blank");
+    if (!currentFail) return showToast("Load a fail first");
+
+    const originalText = shareXBtn.textContent;
+    shareXBtn.disabled = true;
+    shareXBtn.textContent = "Sharing…";
+
+    try {
+      const r = await fetch(`${API_BASE}/api/x/share-fail`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ failUrl: window.location.href })
+      });
+
+      const j = await r.json();
+
+      if (r.status === 401) {
+        showToast("Connect to X first");
+        shareXBtn.textContent = originalText;
+        shareXBtn.disabled = false;
+        return;
+      }
+
+      if (!r.ok || !j.ok) {
+        console.error("share-fail failed:", j);
+        showToast("Share failed");
+        shareXBtn.textContent = originalText;
+        shareXBtn.disabled = false;
+        return;
+      }
+
+      showToast("Shared to X ✅");
+      shareXBtn.textContent = "Shared ✓";
+
+      setTimeout(() => {
+        shareXBtn.textContent = originalText;
+        shareXBtn.disabled = false;
+      }, 1200);
+
+    } catch (e) {
+      console.error(e);
+      showToast("Share failed");
+      shareXBtn.textContent = originalText;
+      shareXBtn.disabled = false;
+    }
   });
 
   nextBtn.addEventListener("click", async () => {
@@ -273,3 +315,4 @@
 </script>
 </body>
 </html>
+
