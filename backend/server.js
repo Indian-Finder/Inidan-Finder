@@ -1,22 +1,27 @@
 import express from "express";
 import session from "express-session";
-import fs from "fs";
-import path from "path";
 import cors from "cors";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 
+/* =====================
+   SETUP
+===================== */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const PORT = process.env.PORT || 8080;
 
 /* =====================
-   ENV VARS
+   ENV
 ===================== */
-const PORT = process.env.PORT || 3000;
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "dev_admin_change_me";
-const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL || "http://localhost:5173";
+const PUBLIC_SITE_URL =
+  process.env.PUBLIC_SITE_URL || "http://localhost:5173";
 
 const COOKIE_SECURE = process.env.COOKIE_SECURE === "true";
 const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || "lax";
@@ -50,7 +55,7 @@ app.use(
 );
 
 /* =====================
-   FILE STORAGE
+   STORAGE
 ===================== */
 const uploadsDir = path.join(__dirname, "uploads");
 const dataDir = path.join(__dirname, "data");
@@ -64,7 +69,7 @@ const storage = multer.diskStorage({
   destination: uploadsDir,
   filename: (_, file, cb) => {
     const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+    cb(null, `${Date.now()}-${crypto.randomUUID()}${ext}`);
   },
 });
 
@@ -98,11 +103,9 @@ app.get("/health", (_, res) => {
 ===================== */
 app.post("/api/admin/login", (req, res) => {
   const password = String(req.body.password || "");
-
   if (password !== ADMIN_SECRET) {
     return res.status(401).json({ ok: false, error: "Invalid password" });
   }
-
   req.session.isAdmin = true;
   req.session.save(() => res.json({ ok: true }));
 });
@@ -117,10 +120,12 @@ app.get("/api/admin/status", (req, res) => {
 });
 
 /* =====================
-   FAIL UPLOAD
+   UPLOAD FAIL (FIXED)
 ===================== */
-app.post("/api/upload", upload.single("video"), (req, res) => {
-  if (!req.file) {
+app.post("/api/upload", upload.any(), (req, res) => {
+  const file = req.files?.[0];
+
+  if (!file) {
     return res.status(400).json({ ok: false, error: "No file uploaded" });
   }
 
@@ -128,8 +133,10 @@ app.post("/api/upload", upload.single("video"), (req, res) => {
 
   const fail = {
     id: crypto.randomUUID(),
-    filename: req.file.filename,
-    url: `/uploads/${req.file.filename}`,
+    filename: file.filename,
+    url: `/uploads/${file.filename}`,
+    title: req.body.title || "",
+    author: req.body.author || "",
     createdAt: Date.now(),
   };
 
@@ -147,15 +154,27 @@ app.get("/api/fails", (_, res) => {
 });
 
 app.get("/api/fails/:id", (req, res) => {
-  const fail = readVideos().find(v => v.id === req.params.id);
+  const fail = readVideos().find((v) => v.id === req.params.id);
   if (!fail) return res.status(404).json({ ok: false });
   res.json(fail);
 });
 
 /* =====================
-   STATIC
+   STATIC FILES
 ===================== */
 app.use("/uploads", express.static(uploadsDir));
+
+/* =====================
+   ERROR HANDLER (IMPORTANT)
+===================== */
+app.use((err, req, res, next) => {
+  if (err?.name === "MulterError") {
+    console.error("MULTER ERROR:", err);
+    return res.status(400).json({ ok: false, error: err.message });
+  }
+  console.error("SERVER ERROR:", err);
+  res.status(500).json({ ok: false, error: "Server error" });
+});
 
 /* =====================
    START
@@ -163,4 +182,5 @@ app.use("/uploads", express.static(uploadsDir));
 app.listen(PORT, () => {
   console.log(`🔥 fails backend running on ${PORT}`);
 });
+
 
