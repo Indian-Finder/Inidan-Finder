@@ -5,44 +5,35 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { fileURLToPath } from "url";
 
 /* =====================
-   SETUP
+   CONFIG / ENV
 ===================== */
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const app = express();
 app.set("trust proxy", 1); // ✅ Railway + secure cookies
 
-/* =====================
-   ENV
-===================== */
 const PORT = process.env.PORT || 8080;
 
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "dev_admin_change_me";
 const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL || "http://localhost:5173";
 
-const COOKIE_SECURE = process.env.COOKIE_SECURE === "true";
+// Cookies for cross-site session (frontend domain != backend domain)
+const COOKIE_SECURE = (process.env.COOKIE_SECURE || "false") === "true";
 const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || "lax").toLowerCase();
 
-const DEBUG_AUTH = (process.env.DEBUG_AUTH || "true") === "true";
+const DEBUG = (process.env.DEBUG_AUTH || "false") === "true";
 const SESSION_SECRET =
   process.env.SESSION_SECRET || "fails_session_secret_change_me";
 
-// X OAuth
+// X OAuth (PKCE)
 const X_CLIENT_ID = process.env.X_CLIENT_ID || "";
 const X_CLIENT_SECRET = process.env.X_CLIENT_SECRET || "";
 const X_REDIRECT_URI = process.env.X_REDIRECT_URI || "";
 const X_SCOPES = (process.env.X_SCOPES ||
   "tweet.read tweet.write users.read offline.access").trim();
 
-/* =====================
-   HELPERS
-===================== */
 function dlog(...args) {
-  if (DEBUG_AUTH) console.log("[DEBUG]", ...args);
+  if (DEBUG) console.log("[DEBUG]", ...args);
 }
 function mustEnv(val, name) {
   if (!val) throw new Error(`Missing env var: ${name}`);
@@ -57,6 +48,23 @@ function base64url(buf) {
 }
 function sha256(input) {
   return crypto.createHash("sha256").update(input).digest();
+}
+
+/* =====================
+   PERSISTENT STORAGE (Railway Volume)
+   Mount your Railway Volume at /data
+===================== */
+const DATA_DIR = "/data";
+const UPLOADS_DIR = "/data/uploads";
+const VIDEOS_FILE = "/data/videos.json";
+
+// Ensure volume paths exist
+try {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  if (!fs.existsSync(VIDEOS_FILE)) fs.writeFileSync(VIDEOS_FILE, "[]");
+} catch (e) {
+  console.error("❌ Failed to initialize /data volume paths:", e);
 }
 
 /* =====================
@@ -89,30 +97,35 @@ app.use(
 );
 
 /* =====================
-   STORAGE
+   MULTER (uploads → /data/uploads)
 ===================== */
-const uploadsDir = path.join(__dirname, "uploads");
-const dataDir = path.join(__dirname, "data");
-const videosFile = path.join(dataDir, "videos.json");
-
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
-if (!fs.existsSync(videosFile)) fs.writeFileSync(videosFile, "[]");
-
 const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (_, file, cb) => {
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname || "");
     cb(null, `${Date.now()}-${crypto.randomUUID()}${ext}`);
   },
 });
 const upload = multer({ storage });
 
+/* =====================
+   DB HELPERS (videos.json)
+===================== */
 function readVideos() {
-  return JSON.parse(fs.readFileSync(videosFile, "utf8"));
+  try {
+    return JSON.parse(fs.readFileSync(VIDEOS_FILE, "utf8"));
+  } catch (e) {
+    console.error("readVideos failed:", e);
+    return [];
+  }
 }
 function writeVideos(videos) {
-  fs.writeFileSync(videosFile, JSON.stringify(videos, null, 2));
+  fs.writeFileSync(VIDEOS_FILE, JSON.stringify(videos, null, 2));
+}
+function inferMediaTypeFromUrl(u) {
+  const url = (u || "").toLowerCase();
+  if (url.match(/\.(png|jpg|jpeg|webp|gif)(\?|$)/)) return "image";
+  return "video";
 }
 
 /* =====================
@@ -124,15 +137,21 @@ function requireAdmin(req, res, next) {
 }
 
 /* =====================
-   HEALTH + DEBUG
+   HEALTH / DEBUG
 ===================== */
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.json({
     ok: true,
-    version: "fails-server-v1",
+    version: "fails-server-volume-v1",
     port: String(PORT),
     cookie: { secure: COOKIE_SECURE, sameSite: COOKIE_SAMESITE },
     publicSiteUrl: PUBLIC_SITE_URL,
+    storage: {
+      dataDir: DATA_DIR,
+      uploadsDir: UPLOADS_DIR,
+      videosFile: VIDEOS_FILE,
+      videosCount: readVideos().length,
+    },
     xConfigured: !!(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI),
   });
 });
@@ -140,58 +159,18 @@ app.get("/health", (req, res) => {
 app.get("/api/debug/session", (req, res) => {
   res.json({
     ok: true,
-    origin: req.headers.origin || null,
-    cookieHeaderPresent: !!req.headers.cookie,
     sessionID: req.sessionID,
     isAdmin: !!req.session?.isAdmin,
     xConnected: !!req.session?.x?.access_token,
+    hasCookieHeader: !!req.headers.cookie,
+    origin: req.headers.origin || null,
   });
 });
 
 /* =====================
-   ADMIN (SESSION)
+   STATIC UPLOADS
 ===================== */
-app.post("/api/admin/login", (req, res) => {
-  const password = String(req.body.password || "");
-  if (password !== ADMIN_SECRET) {
-    return res.status(401).json({ ok: false, error: "Invalid password" });
-  }
-  req.session.isAdmin = true;
-  req.session.save((err) => {
-    if (err) return res.status(500).json({ ok: false, error: "Session save failed" });
-    res.json({ ok: true });
-  });
-});
-
-app.post("/api/admin/logout", (req, res) => {
-  req.session.isAdmin = false;
-  req.session.save(() => res.json({ ok: true }));
-});
-
-app.get("/api/admin/status", (req, res) => {
-  res.json({ ok: true, isAdmin: !!req.session?.isAdmin });
-});
-
-app.get("/api/admin/fails", requireAdmin, (req, res) => {
-  res.json(readVideos());
-});
-
-app.delete("/api/admin/fails/:id", requireAdmin, (req, res) => {
-  const id = req.params.id;
-  const videos = readVideos();
-  const idx = videos.findIndex((v) => v.id === id);
-  if (idx === -1) return res.status(404).json({ ok: false, error: "Not found" });
-
-  const [removed] = videos.splice(idx, 1);
-  writeVideos(videos);
-
-  try {
-    const fullPath = path.join(uploadsDir, removed.filename);
-    if (removed.filename && fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-  } catch {}
-
-  res.json({ ok: true });
-});
+app.use("/uploads", express.static(UPLOADS_DIR));
 
 /* =====================
    UPLOAD
@@ -205,11 +184,12 @@ app.post("/api/upload", upload.any(), (req, res) => {
   const fail = {
     id: crypto.randomUUID(),
     filename: file.filename,
-    url: `/uploads/${file.filename}`, // ✅ frontend expects url
-    title: req.body.title || "",
-    author: req.body.author || "",
+    url: `/uploads/${file.filename}`,
+    title: String(req.body.title || ""),
+    author: String(req.body.author || ""),
     createdAt: Date.now(),
     votes: 0,
+    mediaType: inferMediaTypeFromUrl(file.filename),
   };
 
   videos.unshift(fail);
@@ -239,19 +219,13 @@ app.post("/api/fails/:id/upvote", (req, res) => {
 
   fail.votes = (fail.votes || 0) + 1;
   writeVideos(videos);
+
   res.json({ ok: true, votes: fail.votes });
 });
 
 /* =====================
    BACK-COMPAT (OLD) /api/media
-   - Your old index expected {id, src, mediaType, votes}
 ===================== */
-function inferMediaTypeFromUrl(u) {
-  const url = (u || "").toLowerCase();
-  if (url.match(/\.(png|jpg|jpeg|webp|gif)(\?|$)/)) return "image";
-  return "video";
-}
-
 app.get("/api/media", (_req, res) => {
   const videos = readVideos();
   const out = videos.map((v) => ({
@@ -266,13 +240,65 @@ app.get("/api/media", (_req, res) => {
 });
 
 app.post("/api/media/:id/upvote", (req, res) => {
-  // alias to new upvote
-  req.url = `/api/fails/${req.params.id}/upvote`;
-  return app._router.handle(req, res, () => {});
+  // alias to new endpoint behavior
+  req.params.id = req.params.id;
+  const id = req.params.id;
+  const videos = readVideos();
+  const fail = videos.find((v) => v.id === id);
+  if (!fail) return res.status(404).json({ ok: false, error: "Not found" });
+
+  fail.votes = (fail.votes || 0) + 1;
+  writeVideos(videos);
+  res.json({ ok: true, votes: fail.votes });
 });
 
 /* =====================
-   X (Twitter) OAuth 2.0 PKCE
+   ADMIN
+===================== */
+app.post("/api/admin/login", (req, res) => {
+  const password = String(req.body.password || "");
+  if (password !== ADMIN_SECRET) {
+    return res.status(401).json({ ok: false, error: "Invalid password" });
+  }
+  req.session.isAdmin = true;
+  req.session.save((err) => {
+    if (err) return res.status(500).json({ ok: false, error: "Session save failed" });
+    res.json({ ok: true });
+  });
+});
+
+app.post("/api/admin/logout", (req, res) => {
+  req.session.isAdmin = false;
+  req.session.save(() => res.json({ ok: true }));
+});
+
+app.get("/api/admin/status", (req, res) => {
+  res.json({ ok: true, isAdmin: !!req.session?.isAdmin });
+});
+
+app.get("/api/admin/fails", requireAdmin, (_req, res) => {
+  res.json(readVideos());
+});
+
+app.delete("/api/admin/fails/:id", requireAdmin, (req, res) => {
+  const id = req.params.id;
+  const videos = readVideos();
+  const idx = videos.findIndex((v) => v.id === id);
+  if (idx === -1) return res.status(404).json({ ok: false, error: "Not found" });
+
+  const [removed] = videos.splice(idx, 1);
+  writeVideos(videos);
+
+  try {
+    const fullPath = path.join(UPLOADS_DIR, removed.filename);
+    if (removed.filename && fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  } catch {}
+
+  res.json({ ok: true });
+});
+
+/* =====================
+   X OAUTH 2.0 PKCE
 ===================== */
 app.get("/api/x/status", (req, res) => {
   res.json({
@@ -314,7 +340,7 @@ app.get("/api/x/connect", (req, res) => {
   return res.redirect(authUrl.toString());
 });
 
-// ✅ Back-compat for old callback path
+// Back-compat old callback path
 app.get("/api/twitter/callback", (req, res) => {
   const qs = new URLSearchParams(req.query).toString();
   res.redirect(`/api/x/callback?${qs}`);
@@ -382,7 +408,6 @@ app.get("/api/x/callback", async (req, res) => {
 
   req.session.x_oauth = null;
 
-  // back to site
   return res.redirect(`${PUBLIC_SITE_URL}/index.html?x=connected`);
 });
 
@@ -414,14 +439,9 @@ app.post("/api/x/tweet", async (req, res) => {
 });
 
 /* =====================
-   STATIC UPLOADS
-===================== */
-app.use("/uploads", express.static(uploadsDir));
-
-/* =====================
    ERROR HANDLER
 ===================== */
-app.use((err, req, res, next) => {
+app.use((err, _req, res, _next) => {
   if (err?.name === "MulterError") {
     console.error("MULTER ERROR:", err);
     return res.status(400).json({ ok: false, error: err.message });
@@ -437,10 +457,10 @@ app.listen(PORT, () => {
   console.log(`🔥 fails backend running on ${PORT}`);
   console.log(`[CFG] PUBLIC_SITE_URL=${PUBLIC_SITE_URL}`);
   console.log(`[CFG] COOKIE_SECURE=${COOKIE_SECURE} COOKIE_SAMESITE=${COOKIE_SAMESITE}`);
-  console.log(
-    `[CFG] X configured=${!!(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI)} redirect="${X_REDIRECT_URI}"`
-  );
+  console.log(`[CFG] Volume paths: uploads=${UPLOADS_DIR} videos=${VIDEOS_FILE}`);
+  console.log(`[CFG] X configured=${!!(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI)} redirect="${X_REDIRECT_URI}"`);
 });
+
 
 
 
