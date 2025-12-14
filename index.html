@@ -293,15 +293,21 @@
           </div>
         </div>
 
-        <div class="video-meta">
-          <div class="video-meta-left">
-            <div class="video-title" id="videoTitle">No fail loaded yet</div>
-            <div class="video-author" id="videoAuthor"></div>
-          </div>
-          <div class="video-meta-right">
-            <button class="upvote-btn" disabled id="upvoteBtn">⬆️ Upvote · 0</button>
-            <span class="count-pill"><span id="videoIndex">0</span>/<span id="videoTotal">0</span></span>
-          </div>
+        <div class="video-meta-right">
+  <button class="upvote-btn" disabled id="upvoteBtn">⬆️ Upvote · 0</button>
+
+  <a class="upvote-btn"
+     id="viewFailBtn"
+     href="#"
+     style="text-decoration:none; opacity:0.5; pointer-events:none;">
+     🔎 View fail
+  </a>
+
+  <span class="count-pill">
+    <span id="videoIndex">0</span>/<span id="videoTotal">0</span>
+  </span>
+</div>
+
         </div>
       </div>
     </div>
