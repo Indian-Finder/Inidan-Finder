@@ -14,9 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-
-// ✅ Required behind Railway proxy when using secure cookies
-app.set("trust proxy", 1);
+app.set("trust proxy", 1); // ✅ Railway + secure cookies
 
 /* =====================
    ENV
@@ -27,13 +25,13 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET || "dev_admin_change_me";
 const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL || "http://localhost:5173";
 
 const COOKIE_SECURE = process.env.COOKIE_SECURE === "true";
-const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || "lax";
+const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || "lax").toLowerCase();
 
 const DEBUG_AUTH = (process.env.DEBUG_AUTH || "true") === "true";
 const SESSION_SECRET =
   process.env.SESSION_SECRET || "fails_session_secret_change_me";
 
-// X (Twitter) OAuth
+// X OAuth
 const X_CLIENT_ID = process.env.X_CLIENT_ID || "";
 const X_CLIENT_SECRET = process.env.X_CLIENT_SECRET || "";
 const X_REDIRECT_URI = process.env.X_REDIRECT_URI || "";
@@ -41,15 +39,10 @@ const X_SCOPES = (process.env.X_SCOPES ||
   "tweet.read tweet.write users.read offline.access").trim();
 
 /* =====================
-   DEBUG HELPERS
+   HELPERS
 ===================== */
 function dlog(...args) {
-  if (DEBUG_AUTH) console.log("[AUTH-DEBUG]", ...args);
-}
-function cookiePreview(req) {
-  const raw = req.headers?.cookie || "";
-  if (!raw) return "(no cookie header)";
-  return raw.replace(/fails\.sid=[^;]+/g, "fails.sid=<redacted>");
+  if (DEBUG_AUTH) console.log("[DEBUG]", ...args);
 }
 function mustEnv(val, name) {
   if (!val) throw new Error(`Missing env var: ${name}`);
@@ -72,17 +65,6 @@ function sha256(input) {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// useful request log while debugging auth + cookies
-app.use((req, res, next) => {
-  if (DEBUG_AUTH) {
-    console.log(
-      `[REQ] ${req.method} ${req.path} | origin=${req.headers.origin || ""} | ${cookiePreview(req)}`
-    );
-  }
-  next();
-});
-
-// ✅ CORS must allow credentials and match your site origin exactly
 app.use(
   cors({
     origin: PUBLIC_SITE_URL,
@@ -96,12 +78,12 @@ app.use(
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    proxy: true, // ✅ important for secure cookies behind proxy
+    proxy: true,
     cookie: {
       httpOnly: true,
       secure: COOKIE_SECURE,
       sameSite: COOKIE_SAMESITE, // "none" for cross-site cookies
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+      maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
 );
@@ -120,88 +102,63 @@ if (!fs.existsSync(videosFile)) fs.writeFileSync(videosFile, "[]");
 const storage = multer.diskStorage({
   destination: uploadsDir,
   filename: (_, file, cb) => {
-    const ext = path.extname(file.originalname);
+    const ext = path.extname(file.originalname || "");
     cb(null, `${Date.now()}-${crypto.randomUUID()}${ext}`);
   },
 });
 const upload = multer({ storage });
 
-/* =====================
-   HELPERS
-===================== */
 function readVideos() {
   return JSON.parse(fs.readFileSync(videosFile, "utf8"));
 }
 function writeVideos(videos) {
   fs.writeFileSync(videosFile, JSON.stringify(videos, null, 2));
 }
+
+/* =====================
+   AUTH
+===================== */
 function requireAdmin(req, res, next) {
-  const ok = !!req.session?.isAdmin;
-  dlog("requireAdmin:", { ok, sessionID: req.sessionID, isAdmin: req.session?.isAdmin });
-  if (ok) return next();
+  if (req.session?.isAdmin) return next();
   return res.status(401).json({ ok: false, error: "Unauthorized" });
 }
 
 /* =====================
-   HEALTH
+   HEALTH + DEBUG
 ===================== */
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
-    port: PORT,
-    publicSiteUrl: PUBLIC_SITE_URL,
+    version: "fails-server-v1",
+    port: String(PORT),
     cookie: { secure: COOKIE_SECURE, sameSite: COOKIE_SAMESITE },
+    publicSiteUrl: PUBLIC_SITE_URL,
     xConfigured: !!(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI),
   });
 });
 
-/* =====================
-   DEBUG
-===================== */
 app.get("/api/debug/session", (req, res) => {
   res.json({
     ok: true,
     origin: req.headers.origin || null,
     cookieHeaderPresent: !!req.headers.cookie,
     sessionID: req.sessionID,
-    session: {
-      isAdmin: !!req.session?.isAdmin,
-      xConnected: !!req.session?.x?.access_token,
-    },
-    cookieConfig: {
-      secure: COOKIE_SECURE,
-      sameSite: COOKIE_SAMESITE,
-      publicSiteUrl: PUBLIC_SITE_URL,
-      trustProxy: true,
-    },
+    isAdmin: !!req.session?.isAdmin,
+    xConnected: !!req.session?.x?.access_token,
   });
 });
 
 /* =====================
-   ADMIN AUTH (SESSION)
+   ADMIN (SESSION)
 ===================== */
 app.post("/api/admin/login", (req, res) => {
   const password = String(req.body.password || "");
-  const match = password === ADMIN_SECRET;
-
-  dlog("admin login attempt:", {
-    match,
-    sessionID_before: req.sessionID,
-    hadCookieHeader: !!req.headers.cookie,
-  });
-
-  if (!match) {
+  if (password !== ADMIN_SECRET) {
     return res.status(401).json({ ok: false, error: "Invalid password" });
   }
-
   req.session.isAdmin = true;
-
   req.session.save((err) => {
-    if (err) {
-      console.error("[AUTH-DEBUG] session.save error:", err);
-      return res.status(500).json({ ok: false, error: "Session save failed" });
-    }
-    dlog("admin login success:", { sessionID_after: req.sessionID, isAdmin: req.session.isAdmin });
+    if (err) return res.status(500).json({ ok: false, error: "Session save failed" });
     res.json({ ok: true });
   });
 });
@@ -212,12 +169,32 @@ app.post("/api/admin/logout", (req, res) => {
 });
 
 app.get("/api/admin/status", (req, res) => {
-  dlog("admin status:", { sessionID: req.sessionID, isAdmin: !!req.session?.isAdmin });
   res.json({ ok: true, isAdmin: !!req.session?.isAdmin });
 });
 
+app.get("/api/admin/fails", requireAdmin, (req, res) => {
+  res.json(readVideos());
+});
+
+app.delete("/api/admin/fails/:id", requireAdmin, (req, res) => {
+  const id = req.params.id;
+  const videos = readVideos();
+  const idx = videos.findIndex((v) => v.id === id);
+  if (idx === -1) return res.status(404).json({ ok: false, error: "Not found" });
+
+  const [removed] = videos.splice(idx, 1);
+  writeVideos(videos);
+
+  try {
+    const fullPath = path.join(uploadsDir, removed.filename);
+    if (removed.filename && fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  } catch {}
+
+  res.json({ ok: true });
+});
+
 /* =====================
-   UPLOAD FAIL (works with formData.append("file", file))
+   UPLOAD
 ===================== */
 app.post("/api/upload", upload.any(), (req, res) => {
   const file = req.files?.[0];
@@ -228,10 +205,11 @@ app.post("/api/upload", upload.any(), (req, res) => {
   const fail = {
     id: crypto.randomUUID(),
     filename: file.filename,
-    url: `/uploads/${file.filename}`,
+    url: `/uploads/${file.filename}`, // ✅ frontend expects url
     title: req.body.title || "",
     author: req.body.author || "",
     createdAt: Date.now(),
+    votes: 0,
   };
 
   videos.unshift(fail);
@@ -241,61 +219,72 @@ app.post("/api/upload", upload.any(), (req, res) => {
 });
 
 /* =====================
-   PUBLIC FAILS API
+   FAILS API (NEW)
 ===================== */
-app.get("/api/fails", (_, res) => {
+app.get("/api/fails", (_req, res) => {
   res.json(readVideos());
 });
 
 app.get("/api/fails/:id", (req, res) => {
   const fail = readVideos().find((v) => v.id === req.params.id);
-  if (!fail) return res.status(404).json({ ok: false });
+  if (!fail) return res.status(404).json({ ok: false, error: "Not found" });
   res.json(fail);
 });
 
-/* =====================
-   ADMIN FAIL MANAGEMENT (Option A)
-===================== */
-app.get("/api/admin/fails", requireAdmin, (req, res) => {
-  res.json(readVideos());
-});
-
-app.delete("/api/admin/fails/:id", requireAdmin, (req, res) => {
+app.post("/api/fails/:id/upvote", (req, res) => {
   const id = req.params.id;
-
   const videos = readVideos();
-  const idx = videos.findIndex((v) => v.id === id);
-  if (idx === -1) return res.status(404).json({ ok: false, error: "Not found" });
+  const fail = videos.find((v) => v.id === id);
+  if (!fail) return res.status(404).json({ ok: false, error: "Not found" });
 
-  const [removed] = videos.splice(idx, 1);
+  fail.votes = (fail.votes || 0) + 1;
   writeVideos(videos);
-
-  // best-effort delete uploaded file from disk
-  try {
-    const fullPath = path.join(uploadsDir, removed.filename);
-    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-  } catch (e) {
-    console.warn("Could not delete file:", e?.message || e);
-  }
-
-  res.json({ ok: true });
+  res.json({ ok: true, votes: fail.votes });
 });
 
 /* =====================
-   X (Twitter) OAuth 2.0 (PKCE)
+   BACK-COMPAT (OLD) /api/media
+   - Your old index expected {id, src, mediaType, votes}
+===================== */
+function inferMediaTypeFromUrl(u) {
+  const url = (u || "").toLowerCase();
+  if (url.match(/\.(png|jpg|jpeg|webp|gif)(\?|$)/)) return "image";
+  return "video";
+}
+
+app.get("/api/media", (_req, res) => {
+  const videos = readVideos();
+  const out = videos.map((v) => ({
+    id: v.id,
+    title: v.title || "Fail",
+    author: v.author || "",
+    src: v.url || v.src,
+    mediaType: v.mediaType || inferMediaTypeFromUrl(v.url || v.src),
+    votes: v.votes || 0,
+  }));
+  res.json(out);
+});
+
+app.post("/api/media/:id/upvote", (req, res) => {
+  // alias to new upvote
+  req.url = `/api/fails/${req.params.id}/upvote`;
+  return app._router.handle(req, res, () => {});
+});
+
+/* =====================
+   X (Twitter) OAuth 2.0 PKCE
 ===================== */
 app.get("/api/x/status", (req, res) => {
-  const connected = !!req.session?.x?.access_token;
   res.json({
     ok: true,
-    connected,
+    connected: !!req.session?.x?.access_token,
     has_refresh: !!req.session?.x?.refresh_token,
     scope: req.session?.x?.scope || null,
   });
 });
 
 app.post("/api/x/disconnect", (req, res) => {
-  if (req.session) req.session.x = null;
+  req.session.x = null;
   res.json({ ok: true });
 });
 
@@ -325,6 +314,12 @@ app.get("/api/x/connect", (req, res) => {
   return res.redirect(authUrl.toString());
 });
 
+// ✅ Back-compat for old callback path
+app.get("/api/twitter/callback", (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  res.redirect(`/api/x/callback?${qs}`);
+});
+
 app.get("/api/x/callback", async (req, res) => {
   try {
     mustEnv(X_CLIENT_ID, "X_CLIENT_ID");
@@ -347,7 +342,9 @@ app.get("/api/x/callback", async (req, res) => {
   if (!stored?.code_verifier || !stored?.state) {
     return res.status(400).send("Missing stored PKCE state (session lost)");
   }
-  if (stored.state !== state) return res.status(400).send("State mismatch");
+  if (stored.state !== state) {
+    return res.status(400).send("State mismatch");
+  }
 
   const tokenUrl = "https://api.twitter.com/2/oauth2/token";
   const basic = Buffer.from(`${X_CLIENT_ID}:${X_CLIENT_SECRET}`).toString("base64");
@@ -382,9 +379,10 @@ app.get("/api/x/callback", async (req, res) => {
     token_type: tokenJson.token_type,
     createdAt: Date.now(),
   };
+
   req.session.x_oauth = null;
 
-  // Send user back to site
+  // back to site
   return res.redirect(`${PUBLIC_SITE_URL}/index.html?x=connected`);
 });
 
@@ -416,7 +414,7 @@ app.post("/api/x/tweet", async (req, res) => {
 });
 
 /* =====================
-   STATIC FILES
+   STATIC UPLOADS
 ===================== */
 app.use("/uploads", express.static(uploadsDir));
 
@@ -439,11 +437,11 @@ app.listen(PORT, () => {
   console.log(`🔥 fails backend running on ${PORT}`);
   console.log(`[CFG] PUBLIC_SITE_URL=${PUBLIC_SITE_URL}`);
   console.log(`[CFG] COOKIE_SECURE=${COOKIE_SECURE} COOKIE_SAMESITE=${COOKIE_SAMESITE}`);
-  console.log(`[CFG] DEBUG_AUTH=${DEBUG_AUTH}`);
   console.log(
-    `[CFG] X configured=${!!(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI)} scopes="${X_SCOPES}"`
+    `[CFG] X configured=${!!(X_CLIENT_ID && X_CLIENT_SECRET && X_REDIRECT_URI)} redirect="${X_REDIRECT_URI}"`
   );
 });
+
 
 
 
