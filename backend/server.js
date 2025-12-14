@@ -1,360 +1,361 @@
-// server.js — Inidan Finder backend (Railway)
-// - Serves static site pages (optional, for dev)
-// - Uploads MP4/JPG/PNG into /videos or /images + appends to videos.json
-// - X (Twitter) OAuth 2.0 (PKCE) connect + tweet helper
-//
-// Env needed on Railway:
-//   PUBLIC_SITE_URL=https://<your-netlify-site>.netlify.app   (or your custom domain)
-//   COOKIE_SAMESITE=none
-//   COOKIE_SECURE=true
-//   ADMIN_SECRET=<anything>
-//   X_CLIENT_ID=<from X dev portal>
-//   X_CLIENT_SECRET=<from X dev portal>
-//   X_REDIRECT_URI=https://<your-railway-app>.up.railway.app/api/x/callback
-// Optional:
-//   X_COMMUNITY_ID=1999961909404287175
 
-try { require("dotenv").config(); } catch (e) {}
+/**
+ * Fails.com / Indian Finder API
+ * - Media vault (list, upload, upvote)
+ * - X (Twitter) OAuth 2.0 PKCE connect + status
+ * - Optional: share a fail to X (tweet) after connect
+ *
+ * Env vars (Railway):
+ *   PORT=8080 (Railway sets PORT automatically)
+ *   PUBLIC_SITE_URL=https://<your-netlify-site>.netlify.app   (used for redirects + share links)
+ *   COOKIE_SECURE=true|false
+ *   COOKIE_SAMESITE=None|Lax|Strict
+ *   ADMIN_SECRET=some-long-random
+ *
+ *   X_CLIENT_ID=...
+ *   X_CLIENT_SECRET=...
+ *   X_REDIRECT_URI=https://<your-railway-app>.up.railway.app/api/x/callback
+ *   X_COMMUNITY_ID=1999... (optional; API posting to communities may not be available)
+ */
 
 const express = require("express");
 const cors = require("cors");
-const session = require("express-session");
-const multer = require("multer");
 const crypto = require("crypto");
-const fs = require("fs");
+const session = require("express-session");
 const path = require("path");
-
-// node-fetch v2 style (CommonJS)
-let fetch;
-try { fetch = require("node-fetch"); } catch (e) { fetch = global.fetch; }
+const fs = require("fs");
+const multer = require("multer");
 
 const app = express();
 
-// ✅ Railway / proxy: required for secure cookies + sessions behind reverse proxy
-app.set("trust proxy", 1);
+// -------------------- Config --------------------
+const PORT = process.env.PORT || 8080;
+const PUBLIC_SITE_URL = (process.env.PUBLIC_SITE_URL || "").replace(/\/+$/, ""); // no trailing slash
 
-// -------------------- Env --------------------
-const PORT = process.env.PORT || 3000;
+const COOKIE_SECURE = String(process.env.COOKIE_SECURE || "true").toLowerCase() === "true";
+const COOKIE_SAMESITE = process.env.COOKIE_SAMESITE || "None"; // "None" for cross-site cookies (Netlify -> Railway)
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "dev_admin_secret_change_me";
 
-const PUBLIC_SITE_URL = (process.env.PUBLIC_SITE_URL || "").trim();
-const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || "none").toLowerCase(); // 'none' for cross-site
-const COOKIE_SECURE = (process.env.COOKIE_SECURE || "true").toLowerCase() === "true";
-
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "";
-
-// X OAuth2
-const X_CLIENT_ID = (process.env.X_CLIENT_ID || "").trim();
-const X_CLIENT_SECRET = (process.env.X_CLIENT_SECRET || "").trim();
-const X_REDIRECT_URI = (process.env.X_REDIRECT_URI || process.env.X_REDIRECT_URL || "").trim();
-const X_COMMUNITY_ID = (process.env.X_COMMUNITY_ID || process.env.X_COMMUNITY || "").trim();
-
-// -------------------- Paths --------------------
-const ROOT_DIR = __dirname;
-const VIDEOS_DIR = path.join(ROOT_DIR, "videos");
-const IMAGES_DIR = path.join(ROOT_DIR, "images");
-const VIDEOS_JSON_PATH = path.join(ROOT_DIR, "videos.json");
-
-function ensureDir(p) {
-  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
-}
-ensureDir(VIDEOS_DIR);
-ensureDir(IMAGES_DIR);
+const X_CLIENT_ID = process.env.X_CLIENT_ID || process.env.TWITTER_CLIENT_ID;
+const X_CLIENT_SECRET = process.env.X_CLIENT_SECRET || process.env.TWITTER_CLIENT_SECRET;
+const X_REDIRECT_URI = process.env.X_REDIRECT_URI || process.env.TWITTER_CALLBACK_URL || process.env.TWITTER_REDIRECT_URL;
+const X_COMMUNITY_ID = process.env.X_COMMUNITY_ID || ""; // optional
 
 // -------------------- Middleware --------------------
-app.use(express.json({ limit: "2mb" }));
+app.set("trust proxy", 1);
+
+app.use(cors({
+  origin: function (origin, cb) {
+    // allow same-origin, Netlify preview, and localhost
+    if (!origin) return cb(null, true);
+    if (origin.includes("netlify.app") || origin.includes("localhost") || origin.includes("127.0.0.1")) return cb(null, true);
+    // also allow your public site URL if set
+    if (PUBLIC_SITE_URL && origin === PUBLIC_SITE_URL) return cb(null, true);
+    return cb(null, true); // loosen to avoid headaches (you can tighten later)
+  },
+  credentials: true
+}));
+
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// CORS: allow your Netlify site to call the backend with cookies (credentials)
-app.use(
-  cors({
-    origin: function (origin, cb) {
-      // allow same-origin / curl / server-to-server
-      if (!origin) return cb(null, true);
-      if (!PUBLIC_SITE_URL) return cb(null, true); // dev fallback
-      // Allow exact match, and also allow http://localhost:* in dev
-      const ok =
-        origin === PUBLIC_SITE_URL ||
-        origin.startsWith("http://localhost:") ||
-        origin.startsWith("http://127.0.0.1:");
-      return cb(ok ? null : new Error("CORS blocked"), ok);
-    },
-    credentials: true,
-  })
-);
+app.use(session({
+  name: "fails_sid",
+  secret: process.env.SESSION_SECRET || ADMIN_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: COOKIE_SECURE,
+    sameSite: COOKIE_SAMESITE,
+    maxAge: 1000 * 60 * 60 * 24 * 14 // 14 days
+  }
+}));
 
-// Sessions: stored in memory (fine for demo). Cross-site cookie requires SameSite=None + Secure=true.
-app.use(
-  session({
-    name: "if_sid",
-    secret: process.env.SESSION_SECRET || "inidan-finder-session",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: COOKIE_SAMESITE, // 'none' for cross-site
-      secure: COOKIE_SECURE, // true on https
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    },
-  })
-);
+// -------------------- Storage (media) --------------------
+const DATA_DIR = path.join(__dirname, "data");
+const UPLOADS_DIR = path.join(__dirname, "uploads");
+const MEDIA_JSON_PATH = path.join(DATA_DIR, "media.json");
 
-// Serve static (optional) — if you also want Railway to serve pages in dev
-app.use(express.static(ROOT_DIR));
+function ensureDirs() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  if (!fs.existsSync(MEDIA_JSON_PATH)) fs.writeFileSync(MEDIA_JSON_PATH, JSON.stringify([], null, 2));
+}
+ensureDirs();
 
-// -------------------- Helpers --------------------
-function readVideosJson() {
+function readMedia() {
   try {
-    if (!fs.existsSync(VIDEOS_JSON_PATH)) return { items: [] };
-    const raw = fs.readFileSync(VIDEOS_JSON_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return { items: parsed };
-    if (parsed && Array.isArray(parsed.items)) return parsed;
-    return { items: [] };
-  } catch (e) {
-    return { items: [] };
+    const raw = fs.readFileSync(MEDIA_JSON_PATH, "utf8");
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
   }
 }
-function writeVideosJson(obj) {
-  fs.writeFileSync(VIDEOS_JSON_PATH, JSON.stringify(obj, null, 2));
+
+function writeMedia(arr) {
+  fs.writeFileSync(MEDIA_JSON_PATH, JSON.stringify(arr, null, 2));
 }
 
-function safeFilename(originalName) {
-  const ext = path.extname(originalName).toLowerCase();
-  const base = crypto.randomBytes(12).toString("hex");
-  return `${base}${ext}`;
+function safeExt(filename) {
+  const ext = path.extname(filename || "").toLowerCase();
+  const allowed = new Set([".mp4", ".mov", ".webm", ".jpg", ".jpeg", ".png", ".gif"]);
+  return allowed.has(ext) ? ext : "";
 }
 
-function requireAdmin(req, res, next) {
-  const provided =
-    (req.headers["x-admin-secret"] || "").toString() ||
-    (req.query.admin_secret || "").toString() ||
-    (req.body && req.body.admin_secret ? String(req.body.admin_secret) : "");
-  if (!ADMIN_SECRET || provided !== ADMIN_SECRET) {
-    return res.status(401).json({ ok: false, error: "unauthorized" });
+function isImageExt(ext) {
+  return [".jpg", ".jpeg", ".png", ".gif"].includes(ext);
+}
+
+// Serve uploaded files
+app.use("/uploads", express.static(UPLOADS_DIR, {
+  setHeaders: (res) => {
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
   }
-  next();
-}
+}));
 
-// -------------------- Multer upload --------------------
+// Multer upload config
 const upload = multer({
   storage: multer.diskStorage({
-    destination: function (req, file, cb) {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const isVideo = [".mp4", ".mov", ".webm"].includes(ext);
-      cb(null, isVideo ? VIDEOS_DIR : IMAGES_DIR);
+    destination: function (_req, _file, cb) {
+      cb(null, UPLOADS_DIR);
     },
-    filename: function (req, file, cb) {
-      cb(null, safeFilename(file.originalname));
-    },
+    filename: function (_req, file, cb) {
+      const ext = safeExt(file.originalname);
+      const base = crypto.randomBytes(16).toString("hex");
+      cb(null, `${base}${ext}`);
+    }
   }),
-  limits: { fileSize: 220 * 1024 * 1024 }, // ~220MB
-  fileFilter: function (req, file, cb) {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const ok = [".mp4", ".mov", ".webm", ".jpg", ".jpeg", ".png"].includes(ext);
-    cb(ok ? null : new Error("Unsupported file type"), ok);
-  },
+  limits: { fileSize: 220 * 1024 * 1024 } // ~220MB
 });
 
-// -------------------- Routes --------------------
-app.get("/api/status", (req, res) => {
-  res.json({ ok: true, service: "inidan-finder-backend" });
-});
-
-// list media
-app.get("/api/media", (req, res) => {
-  const data = readVideosJson();
-  res.json({ ok: true, items: data.items || [] });
-});
-
-// Upload endpoint used by submit.html
-app.post("/api/upload", upload.single("file"), (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ ok: false, error: "No file" });
-
-    const title = (req.body.title || "").toString().trim().slice(0, 120);
-    const handle = (req.body.handle || "").toString().trim().slice(0, 60);
-
-    const relPath =
-      req.file.destination === VIDEOS_DIR
-        ? `/videos/${req.file.filename}`
-        : `/images/${req.file.filename}`;
-
-    const type = relPath.startsWith("/videos/") ? "video" : "image";
-
-    const data = readVideosJson();
-    const item = {
-      id: crypto.randomBytes(10).toString("hex"),
-      type,
-      title: title || (type === "video" ? "Untitled video" : "Untitled image"),
-      handle: handle || "",
-      src: relPath,
-      createdAt: new Date().toISOString(),
-      upvotes: 0,
-    };
-    data.items = Array.isArray(data.items) ? data.items : [];
-    data.items.unshift(item);
-    writeVideosJson(data);
-
-    res.json({ ok: true, item });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message || "upload_failed" });
-  }
-});
-
-// upvote (simple demo)
-app.post("/api/upvote/:id", (req, res) => {
-  const id = req.params.id;
-  const data = readVideosJson();
-  const items = Array.isArray(data.items) ? data.items : [];
-  const idx = items.findIndex((x) => x.id === id);
-  if (idx === -1) return res.status(404).json({ ok: false, error: "not_found" });
-  items[idx].upvotes = (items[idx].upvotes || 0) + 1;
-  writeVideosJson({ items });
-  res.json({ ok: true, item: items[idx] });
-});
-
-// -------------------- X OAuth 2.0 (PKCE) --------------------
-function base64url(buf) {
-  return buf
-    .toString("base64")
+// -------------------- Helper: PKCE --------------------
+function base64URLEncode(buffer) {
+  return buffer.toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 }
-function sha256(input) {
-  return crypto.createHash("sha256").update(input).digest();
+
+function sha256(buffer) {
+  return crypto.createHash("sha256").update(buffer).digest();
 }
 
-app.get("/api/x/connect", (req, res) => {
-  if (!X_CLIENT_ID || !X_REDIRECT_URI) {
-    return res.status(500).send("Missing X_CLIENT_ID or X_REDIRECT_URI");
+function createCodeVerifier() {
+  return base64URLEncode(crypto.randomBytes(32));
+}
+
+function createCodeChallenge(verifier) {
+  return base64URLEncode(sha256(verifier));
+}
+
+// -------------------- Health --------------------
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+// -------------------- Media API --------------------
+app.get("/api/media", (_req, res) => {
+  const media = readMedia();
+  res.json(media);
+});
+
+app.post("/api/media/:id/upvote", (req, res) => {
+  const id = req.params.id;
+  const media = readMedia();
+  const idx = media.findIndex(m => String(m.id) === String(id));
+  if (idx === -1) return res.status(404).json({ ok: false, error: "Not found" });
+
+  media[idx].votes = (media[idx].votes || 0) + 1;
+  writeMedia(media);
+  return res.json({ ok: true, votes: media[idx].votes });
+});
+
+// Upload a new fail (video or image)
+app.post("/api/upload", upload.single("file"), (req, res) => {
+  try {
+    const title = (req.body.title || "").trim().slice(0, 140);
+    const author = (req.body.author || "").trim().slice(0, 80);
+
+    if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
+
+    const ext = safeExt(req.file.originalname);
+    if (!ext) return res.status(400).json({ ok: false, error: "Unsupported file type" });
+
+    const item = {
+      id: crypto.randomBytes(10).toString("hex"),
+      title: title || "Fail",
+      author: author || "",
+      src: `/uploads/${req.file.filename}`,
+      mediaType: isImageExt(ext) ? "image" : "video",
+      votes: 0,
+      createdAt: new Date().toISOString()
+    };
+
+    const media = readMedia();
+    media.unshift(item);
+    writeMedia(media);
+
+    return res.json({ ok: true, item });
+  } catch (err) {
+    console.error("Upload error:", err);
+    return res.status(500).json({ ok: false, error: "Upload failed" });
   }
+});
 
-  const state = crypto.randomBytes(16).toString("hex");
-  const codeVerifier = base64url(crypto.randomBytes(32));
-  const codeChallenge = base64url(sha256(codeVerifier));
+// -------------------- X Connect (OAuth 2.0) --------------------
+app.get("/api/x/status", (req, res) => {
+  const username = req.session.x_username || null;
+  res.json({ connected: !!username, username });
+});
 
-  req.session.x_oauth_state = state;
-  req.session.x_code_verifier = codeVerifier;
+app.get("/api/x/connect", async (req, res) => {
+  try {
+    if (!X_CLIENT_ID || !X_CLIENT_SECRET || !X_REDIRECT_URI) {
+      return res.status(500).send("X OAuth env vars missing (X_CLIENT_ID / X_CLIENT_SECRET / X_REDIRECT_URI).");
+    }
 
-  const scope = [
-    "tweet.read",
-    "users.read",
-    "tweet.write",
-    "offline.access",
-  ].join(" ");
+    const state = base64URLEncode(crypto.randomBytes(16));
+    const codeVerifier = createCodeVerifier();
+    const codeChallenge = createCodeChallenge(codeVerifier);
 
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: X_CLIENT_ID,
-    redirect_uri: X_REDIRECT_URI,
-    scope,
-    state,
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
-  });
+    req.session.x_oauth_state = state;
+    req.session.x_code_verifier = codeVerifier;
 
-  return res.redirect(`https://twitter.com/i/oauth2/authorize?${params.toString()}`);
+    req.session.save(() => {
+      const params = new URLSearchParams({
+        response_type: "code",
+        client_id: X_CLIENT_ID,
+        redirect_uri: X_REDIRECT_URI,
+        scope: "tweet.read users.read tweet.write offline.access",
+        state,
+        code_challenge: codeChallenge,
+        code_challenge_method: "S256"
+      });
+
+      // Note: twitter.com/i/oauth2/authorize redirects to x.com in browser (normal)
+      return res.redirect(`https://twitter.com/i/oauth2/authorize?${params.toString()}`);
+    });
+  } catch (err) {
+    console.error("Connect error:", err);
+    return res.status(500).send("X connect failed");
+  }
 });
 
 app.get("/api/x/callback", async (req, res) => {
   try {
-    const { state, code, error, error_description } = req.query;
+    const { state, code } = req.query;
 
-    if (error) {
-      return res.status(400).send(`X OAuth error: ${error} ${error_description || ""}`);
+    if (!state || !code) return res.status(400).send("Missing code/state");
+    if (!req.session.x_oauth_state || state !== req.session.x_oauth_state) {
+      return res.status(400).send("Invalid state");
     }
-    if (!state || !code) return res.status(400).send("Missing state or code");
-    if (state !== req.session.x_oauth_state) return res.status(400).send("Invalid state");
 
     const codeVerifier = req.session.x_code_verifier;
     if (!codeVerifier) return res.status(400).send("Missing code verifier");
 
-    const body = new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: X_CLIENT_ID,
-      redirect_uri: X_REDIRECT_URI,
-      code: String(code),
-      code_verifier: codeVerifier,
-    });
-
-    // For confidential clients, X expects Basic Auth with client_id:client_secret
-    const basic = Buffer.from(`${X_CLIENT_ID}:${X_CLIENT_SECRET}`).toString("base64");
-
-    const tokenResp = await fetch("https://api.twitter.com/2/oauth2/token", {
+    // Exchange code -> token
+    const tokenRes = await fetch("https://api.twitter.com/2/oauth2/token", {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${basic}`,
+        "Authorization": "Basic " + Buffer.from(`${X_CLIENT_ID}:${X_CLIENT_SECRET}`).toString("base64")
       },
-      body: body.toString(),
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: String(code),
+        redirect_uri: X_REDIRECT_URI,
+        code_verifier: codeVerifier
+      })
     });
 
-    const tokenJson = await tokenResp.json();
-    if (!tokenResp.ok) {
+    const tokenJson = await tokenRes.json();
+    if (!tokenRes.ok) {
+      console.error("Token exchange failed:", tokenJson);
       return res.status(400).json({ ok: false, error: tokenJson });
     }
 
-    req.session.x_access_token = tokenJson.access_token;
+    const accessToken = tokenJson.access_token;
+    req.session.x_access_token = accessToken;
     req.session.x_refresh_token = tokenJson.refresh_token || null;
-    req.session.x_connected_at = Date.now();
 
-    // Fetch username (best-effort)
-    try {
-      const me = await fetch("https://api.twitter.com/2/users/me", {
-        headers: { Authorization: `Bearer ${tokenJson.access_token}` },
-      });
-      const meJson = await me.json();
-      req.session.x_username = meJson?.data?.username || null;
-    } catch (_) {}
+    // Fetch the user
+    const meRes = await fetch("https://api.twitter.com/2/users/me?user.fields=username", {
+      headers: { "Authorization": `Bearer ${accessToken}` }
+    });
+    const meJson = await meRes.json();
+    if (!meRes.ok) {
+      console.error("User lookup failed:", meJson);
+      return res.status(400).json({ ok: false, error: meJson });
+    }
 
-    // Redirect back to your Netlify homepage
-    if (PUBLIC_SITE_URL) return res.redirect(PUBLIC_SITE_URL);
-    return res.redirect("/");
-  } catch (e) {
-    return res.status(500).send(e.message || "callback_failed");
+    req.session.x_user_id = meJson?.data?.id || null;
+    req.session.x_username = meJson?.data?.username || null;
+
+    // Clean transient oauth fields
+    req.session.x_oauth_state = null;
+    req.session.x_code_verifier = null;
+
+    const redirectTo = PUBLIC_SITE_URL ? `${PUBLIC_SITE_URL}/` : "/";
+    return req.session.save(() => res.redirect(redirectTo));
+  } catch (err) {
+    console.error("Callback error:", err);
+    return res.status(500).send("X callback failed");
   }
 });
 
-app.get("/api/x/status", (req, res) => {
-  res.json({
-    connected: !!req.session.x_access_token,
-    username: req.session.x_username || null,
-  });
+app.post("/api/x/disconnect", (req, res) => {
+  req.session.x_access_token = null;
+  req.session.x_refresh_token = null;
+  req.session.x_username = null;
+  req.session.x_user_id = null;
+  req.session.x_oauth_state = null;
+  req.session.x_code_verifier = null;
+  return req.session.save(() => res.json({ ok: true }));
 });
 
-// Post a tweet (and attempt to associate with a community if supported)
-app.post("/api/x/tweet", async (req, res) => {
+// -------------------- Share a fail to X --------------------
+// Body: { url: "https://fails.com/fail/<id>", text?: "...", communityId?: "..." }
+app.post("/api/x/share-fail", async (req, res) => {
   try {
-    const token = req.session?.x_access_token;
-    if (!token) return res.status(401).json({ ok: false, error: "not_connected" });
+    const token = req.session.x_access_token;
+    if (!token) return res.status(401).json({ ok: false, error: "Not connected to X" });
 
-    const text = (req.body?.text || "").toString().trim();
-    if (!text) return res.status(400).json({ ok: false, error: "missing_text" });
+    const url = String(req.body.url || "").trim();
+    if (!url) return res.status(400).json({ ok: false, error: "Missing url" });
 
-    const payload = { text };
-    const communityId = (req.body?.community_id || X_COMMUNITY_ID || "").toString().trim();
-    // NOTE: If X supports community posting via tweet create, it may accept a community id field.
-    // If not supported for your app tier, X will return an error — we pass it only when present.
-    if (communityId) payload.community_id = communityId;
+    const username = req.session.x_username || "someone";
+    const text =
+      String(req.body.text || "").trim() ||
+      `I just found a fail! Check it out here ${url}`;
 
-    const resp = await fetch("https://api.twitter.com/2/tweets", {
+    // Post tweet
+    const tweetRes = await fetch("https://api.twitter.com/2/tweets", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ text })
     });
-    const json = await resp.json();
-    if (!resp.ok) return res.status(400).json({ ok: false, error: json });
-    return res.json({ ok: true, data: json });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message || "tweet_failed" });
+
+    const tweetJson = await tweetRes.json();
+    if (!tweetRes.ok) {
+      console.error("Tweet failed:", tweetJson);
+      return res.status(400).json({ ok: false, error: tweetJson });
+    }
+
+    // NOTE: As of now, X's public API for posting directly into Communities isn't consistently available.
+    // If you discover an endpoint for it later, we can wire it in here using X_COMMUNITY_ID.
+
+    return res.json({ ok: true, tweet: tweetJson, connectedAs: username, communityId: req.body.communityId || X_COMMUNITY_ID || null });
+  } catch (err) {
+    console.error("Share-fail error:", err);
+    return res.status(500).json({ ok: false, error: "Share failed" });
   }
 });
 
 // -------------------- Start --------------------
 app.listen(PORT, () => {
-  console.log(`✅ Inidan Finder backend listening on ${PORT}`);
+  console.log(`Fails API running on port ${PORT}`);
+  console.log(`Uploads dir: ${UPLOADS_DIR}`);
 });
