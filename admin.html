@@ -2,231 +2,73 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Fails Admin – Moderation Panel</title>
+  <title>Fails Admin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root {
-      --bg: #020617;
-      --card: #0b1120;
-      --accent: #f97316;
-      --accent2: #ec4899;
-      --text: #e5e7eb;
-      --muted: #9ca3af;
-      --radius: 1.2rem;
+    :root{
+      --bg:#020617;--card:#0b1120;--accent:#f97316;--accent2:#ec4899;
+      --text:#e5e7eb;--muted:#9ca3af;--radius:1.2rem;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      min-height: 100vh;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
-      background:
-        linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0.7)),
-        url("india-flag.png");
-      background-size: cover;
-      background-position: center;
-      background-attachment: fixed;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      min-height:100vh;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Inter",sans-serif;
+      background:linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,.7)), url("india-flag.png");
+      background-size:cover;background-position:center;background-attachment:fixed;
+      color:var(--text);display:flex;align-items:center;justify-content:center;padding:24px;
     }
-    .shell {
-      width: 100%;
-      max-width: 1100px;
+    .shell{width:100%;max-width:1100px}
+    .card{
+      background:rgba(11,17,32,.96);border-radius:1.6rem;padding:22px 20px 20px;
+      border:1px solid rgba(148,163,184,.4);backdrop-filter:blur(10px);
+      box-shadow:0 18px 36px rgba(0,0,0,.6);
     }
-    .card {
-      background: rgba(11,17,32,0.96);
-      border-radius: 1.6rem;
-      padding: 22px 20px 20px;
-      border: 1px solid rgba(148,163,184,0.4);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 18px 36px rgba(0,0,0,0.6);
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px}
+    h1{font-size:1.3rem}
+    .badge{font-size:.78rem;color:var(--muted)}
+    .ghost-btn{
+      border-radius:999px;border:1px solid rgba(148,163,184,.5);
+      padding:6px 12px;font-size:.8rem;color:var(--muted);
+      background:transparent;text-decoration:none;cursor:pointer;
+      display:inline-flex;align-items:center;gap:4px;
     }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 14px;
-      gap: 10px;
+    .login-card{max-width:420px;margin:0 auto;text-align:left}
+    label{font-size:.8rem;display:block;margin-bottom:4px;color:var(--muted)}
+    input[type="password"]{
+      width:100%;border-radius:.8rem;border:1px solid rgba(148,163,184,.6);
+      background:rgba(15,23,42,.9);color:var(--text);
+      padding:10px 12px;font-size:.9rem;margin-bottom:10px;outline:none
     }
-    h1 {
-      font-size: 1.3rem;
+    input:focus{border-color:var(--accent);box-shadow:0 0 0 1px rgba(249,115,22,.4)}
+    .primary-btn{
+      border-radius:999px;border:none;padding:9px 16px;font-size:.9rem;font-weight:600;
+      cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));color:#020617
     }
-    .badge {
-      font-size: 0.78rem;
-      color: var(--muted);
+    .error{margin-top:6px;font-size:.78rem;color:#f97373}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    .section{
+      background:rgba(15,23,42,.96);border-radius:1rem;padding:10px 10px 8px;
+      border:1px solid rgba(148,163,184,.3)
     }
-    .ghost-btn {
-      border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.5);
-      padding: 6px 12px;
-      font-size: 0.8rem;
-      color: var(--muted);
-      background: transparent;
-      text-decoration: none;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
+    .list{max-height:600px;overflow-y:auto;padding-right:4px}
+    .item-card{
+      border-radius:.9rem;border:1px solid rgba(148,163,184,.25);
+      padding:8px;margin-bottom:8px;background:rgba(15,23,42,.95);
+      display:grid;grid-template-columns:160px minmax(0,1fr);gap:10px;font-size:.8rem
     }
-
-    /* login */
-    .login-card {
-      max-width: 420px;
-      margin: 0 auto;
-      text-align: left;
+    .thumb{
+      width:100%;aspect-ratio:16/9;border-radius:.6rem;overflow:hidden;background:#000;
+      display:flex;align-items:center;justify-content:center
     }
-    label {
-      font-size: 0.8rem;
-      display: block;
-      margin-bottom: 4px;
-      color: var(--muted);
-    }
-    input[type="password"] {
-      width: 100%;
-      border-radius: 0.8rem;
-      border: 1px solid rgba(148,163,184,0.6);
-      background: rgba(15,23,42,0.9);
-      color: var(--text);
-      padding: 10px 12px;
-      font-size: 0.9rem;
-      margin-bottom: 10px;
-      outline: none;
-    }
-    input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 1px rgba(249,115,22,0.4);
-    }
-    .primary-btn {
-      border-radius: 999px;
-      border: none;
-      padding: 9px 16px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: #020617;
-    }
-    .error {
-      margin-top: 6px;
-      font-size: 0.78rem;
-      color: #f97373;
-    }
-
-    /* dashboard layout */
-    .grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.2fr);
-      gap: 16px;
-    }
-    @media (max-width: 900px) {
-      .grid { grid-template-columns: 1fr; }
-    }
-    h2 {
-      font-size: 1rem;
-      margin-bottom: 8px;
-    }
-    .section {
-      background: rgba(15,23,42,0.96);
-      border-radius: 1rem;
-      padding: 10px 10px 8px;
-      border: 1px solid rgba(148,163,184,0.3);
-    }
-    .pending-list, .approved-list {
-      max-height: 480px;
-      overflow-y: auto;
-      padding-right: 4px;
-    }
-    .item-card {
-      border-radius: 0.9rem;
-      border: 1px solid rgba(148,163,184,0.25);
-      padding: 8px;
-      margin-bottom: 8px;
-      background: rgba(15,23,42,0.95);
-      display: grid;
-      grid-template-columns: 120px minmax(0, 1fr);
-      gap: 8px;
-      font-size: 0.8rem;
-    }
-    .thumb {
-      width: 100%;
-      aspect-ratio: 16/9;
-      border-radius: 0.6rem;
-      overflow: hidden;
-      background: #000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .thumb video,
-    .thumb img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .meta-line {
-      margin-bottom: 2px;
-      color: var(--muted);
-    }
-    .meta-line strong {
-      color: var(--text);
-    }
-    .tag {
-      display: inline-block;
-      border-radius: 999px;
-      padding: 2px 8px;
-      font-size: 0.7rem;
-      background: rgba(15,23,42,1);
-      border: 1px solid rgba(148,163,184,0.4);
-      margin-right: 4px;
-    }
-    .upvotes-pill {
-      font-size: 0.78rem;
-      padding: 2px 6px;
-      border-radius: 999px;
-      border: 1px solid rgba(248,250,252,0.25);
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .row-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 4px;
-      gap: 6px;
-    }
-    .row-bottom {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    .tiny {
-      font-size: 0.72rem;
-      color: var(--muted);
-    }
-    .sort-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 6px;
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-    .small-btn {
-      border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.5);
-      padding: 2px 8px;
-      font-size: 0.75rem;
-      background: transparent;
-      color: var(--muted);
-      cursor: pointer;
+    .thumb video,.thumb img{width:100%;height:100%;object-fit:cover}
+    .row-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+    .meta{color:var(--muted);margin-bottom:4px}
+    .tiny{font-size:.72rem;color:var(--muted)}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .danger-btn{
+      border-radius:999px;border:1px solid rgba(248,113,113,.6);
+      padding:6px 10px;font-size:.78rem;background:rgba(248,113,113,.12);
+      color:#fecaca;cursor:pointer
     }
   </style>
 </head>
@@ -235,8 +77,8 @@
   <div class="card">
     <header>
       <div>
-        <h1>Fails.com Admin</h1>
-        <div class="badge">Moderate submissions • Track top fails for airdrops</div>
+        <h1>Fails Admin</h1>
+        <div class="badge">Manage live fails (videos.json)</div>
       </div>
       <a href="index.html" class="ghost-btn">⬅ Site</a>
     </header>
@@ -251,25 +93,17 @@
 
     <!-- DASHBOARD VIEW -->
     <div id="dashboard" style="display:none;">
-      <div class="grid">
-        <!-- Pending -->
-        <div class="section">
-          <h2>Pending submissions</h2>
-          <p class="tiny" style="margin-bottom:6px;">Approve to go live • Reject to hide.</p>
-          <div id="pendingList" class="pending-list"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap">
+        <div class="tiny" id="countLabel"></div>
+        <div style="display:flex;gap:8px">
+          <button class="ghost-btn" id="refreshBtn">↻ Refresh</button>
+          <button class="ghost-btn" id="logoutBtn">Log out</button>
         </div>
+      </div>
 
-        <!-- Approved -->
+      <div class="grid">
         <div class="section">
-          <div class="sort-row">
-            <h2>Approved fails</h2>
-            <div>
-              Sort by:
-              <button class="small-btn" id="sortNewestBtn">Newest</button>
-              <button class="small-btn" id="sortUpvotesBtn">Upvotes</button>
-            </div>
-          </div>
-          <div id="approvedList" class="approved-list"></div>
+          <div class="list" id="failsList"></div>
         </div>
       </div>
     </div>
@@ -277,205 +111,147 @@
 </div>
 
 <script>
-  const API_BASE ="https://inidan-finder-production-c13b.up.railway.app";
+  const API_BASE = "https://inidan-finder-production-c13b.up.railway.app";
 
   const loginView = document.getElementById("loginView");
   const dashboard = document.getElementById("dashboard");
   const loginBtn = document.getElementById("loginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const refreshBtn = document.getElementById("refreshBtn");
   const loginError = document.getElementById("loginError");
-  const pendingListEl = document.getElementById("pendingList");
-  const approvedListEl = document.getElementById("approvedList");
-  const sortNewestBtn = document.getElementById("sortNewestBtn");
-  const sortUpvotesBtn = document.getElementById("sortUpvotesBtn");
-
-  let adminSecret = localStorage.getItem("failsAdminSecret") || "";
-  let approvedMedia = [];
-  let sortMode = "upvotes"; // "upvotes" | "newest"
+  const failsListEl = document.getElementById("failsList");
+  const countLabel = document.getElementById("countLabel");
 
   function setLoggedInUI() {
     loginView.style.display = "none";
     dashboard.style.display = "block";
   }
-
   function setLoggedOutUI() {
     loginView.style.display = "block";
     dashboard.style.display = "none";
   }
 
-  async function fetchAdmin(path, options = {}) {
-    const headers = options.headers || {};
-    headers["x-admin-secret"] = adminSecret;
-    return fetch(`${API_BASE}${path}`, { ...options, headers });
+  async function api(path, options = {}) {
+    return fetch(`${API_BASE}${path}`, {
+      ...options,
+      credentials: "include",
+      headers: {
+        ...(options.headers || {})
+      }
+    });
   }
 
-  async function tryLoadDashboard() {
-    if (!adminSecret) return;
-
-    try {
-      const res = await fetchAdmin("/api/submissions?status=pending");
-      if (!res.ok) throw new Error("Unauthorized");
-      setLoggedInUI();
-      const pending = await res.json();
-      renderPending(pending);
-      await loadApproved();
-    } catch (err) {
-      console.warn("Admin login failed", err);
-      adminSecret = "";
-      localStorage.removeItem("failsAdminSecret");
-      setLoggedOutUI();
-    }
+  async function login(password) {
+    const res = await api("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password })
+    });
+    return res.ok;
   }
 
-  loginBtn.addEventListener("click", async () => {
-    const pwd = document.getElementById("adminPassword").value.trim();
-    if (!pwd) {
-      loginError.textContent = "Enter a password";
-      return;
-    }
-    adminSecret = pwd;
-    loginError.textContent = "";
-    await tryLoadDashboard();
-    if (!adminSecret) {
-      loginError.textContent = "Invalid password";
-    } else {
-      localStorage.setItem("failsAdminSecret", adminSecret);
-    }
-  });
+  async function logout() {
+    await api("/api/admin/logout", { method: "POST" });
+  }
 
-  function renderPending(items) {
-    pendingListEl.innerHTML = "";
+  async function getStatus() {
+    const res = await api("/api/admin/status");
+    if (!res.ok) return { isAdmin: false };
+    return res.json();
+  }
+
+  function renderFails(items) {
+    failsListEl.innerHTML = "";
+    countLabel.textContent = `${items.length} fails`;
+
     if (!items.length) {
-      pendingListEl.innerHTML = `<p class="tiny">No pending submissions.</p>`;
+      failsListEl.innerHTML = `<p class="tiny">No fails found.</p>`;
       return;
-    }
-
-    items
-      .slice()
-      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-      .forEach(item => {
-        const div = document.createElement("div");
-        div.className = "item-card";
-        div.innerHTML = `
-          <div class="thumb">
-            ${item.mediaType === "image"
-              ? `<img src="${API_BASE + item.src}" alt="">`
-              : `<video src="${API_BASE + item.src}" muted></video>`}
-          </div>
-          <div>
-            <div class="row-top">
-              <span class="meta-line"><strong>${item.title || "Untitled fail"}</strong></span>
-              <span class="tag">${item.mediaType || "video"}</span>
-            </div>
-            <div class="meta-line">
-              ${item.uploader ? `From <strong>${item.uploader}</strong>` : `<span class="tiny">Anonymous</span>`}
-            </div>
-            <div class="row-bottom">
-              <span class="tiny">Submitted: ${item.createdAt ? new Date(item.createdAt).toLocaleString() : "n/a"}</span>
-              <div>
-                <button class="primary-btn" data-approve="${item.id}" style="padding:4px 10px;font-size:0.78rem;">✅ Approve</button>
-                <button class="ghost-btn" data-reject="${item.id}" style="padding:4px 10px;font-size:0.78rem;margin-left:4px;">🗑 Reject</button>
-              </div>
-            </div>
-          </div>
-        `;
-        pendingListEl.appendChild(div);
-      });
-
-    pendingListEl.querySelectorAll("[data-approve]").forEach(btn => {
-      btn.addEventListener("click", () => handleModerate(btn.dataset.approve, "approved"));
-    });
-    pendingListEl.querySelectorAll("[data-reject]").forEach(btn => {
-      btn.addEventListener("click", () => handleModerate(btn.dataset.reject, "rejected"));
-    });
-  }
-
-  async function loadApproved() {
-    const res = await fetchAdmin("/api/submissions?status=approved");
-    if (!res.ok) {
-      console.error("Could not load approved");
-      return;
-    }
-    approvedMedia = await res.json();
-    renderApproved();
-  }
-
-  function renderApproved() {
-    approvedListEl.innerHTML = "";
-    if (!approvedMedia.length) {
-      approvedListEl.innerHTML = `<p class="tiny">No approved fails yet.</p>`;
-      return;
-    }
-
-    let items = approvedMedia.slice();
-    if (sortMode === "upvotes") {
-      items.sort((a, b) => (b.upvotes || 0) - (a.upvotes || 0));
-    } else {
-      items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).reverse();
     }
 
     items.forEach(item => {
+      const isImage = (item.url || "").match(/\.(png|jpg|jpeg|webp)$/i);
+
       const div = document.createElement("div");
       div.className = "item-card";
       div.innerHTML = `
         <div class="thumb">
-          ${item.mediaType === "image"
-            ? `<img src="${API_BASE + item.src}" alt="">`
-            : `<video src="${API_BASE + item.src}" muted></video>`}
+          ${isImage
+            ? `<img src="${API_BASE + item.url}" alt="">`
+            : `<video src="${API_BASE + item.url}" muted playsinline></video>`}
         </div>
         <div>
           <div class="row-top">
-            <span class="meta-line"><strong>${item.title || "Untitled fail"}</strong></span>
-            <span class="upvotes-pill">⬆ ${item.upvotes || 0}</span>
+            <div><strong>${item.title || "Untitled fail"}</strong></div>
+            <div class="tiny">${item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</div>
           </div>
-          <div class="meta-line">
-            ${item.uploader ? `From <strong>${item.uploader}</strong>` : `<span class="tiny">Anonymous</span>`}
-          </div>
-          <div class="row-bottom">
-            <span class="tiny">Created: ${item.createdAt ? new Date(item.createdAt).toLocaleString() : "n/a"}</span>
-            <span class="tag">${item.mediaType || "video"}</span>
+          <div class="meta">${item.author ? `From <strong style="color:var(--text)">${item.author}</strong>` : `<span class="tiny">Anonymous</span>`}</div>
+          <div class="tiny">ID: ${item.id}</div>
+
+          <div class="actions">
+            <button class="danger-btn" data-del="${item.id}">🗑 Delete</button>
           </div>
         </div>
       `;
-      approvedListEl.appendChild(div);
+      failsListEl.appendChild(div);
+    });
+
+    failsListEl.querySelectorAll("[data-del]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.del;
+        if (!confirm("Delete this fail forever?")) return;
+        const res = await api(`/api/admin/fails/${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!res.ok) {
+          alert("Delete failed");
+          return;
+        }
+        await loadFails();
+      });
     });
   }
 
-  async function handleModerate(id, status) {
-    if (!id) return;
-    const res = await fetchAdmin(`/api/submissions/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status })
-    });
+  async function loadFails() {
+    const res = await api("/api/admin/fails");
     if (!res.ok) {
-      alert("Action failed");
+      alert("Could not load fails (are you logged in?)");
       return;
     }
-
-    // reload lists
-    const pendingRes = await fetchAdmin("/api/submissions?status=pending");
-    const pending = pendingRes.ok ? await pendingRes.json() : [];
-    renderPending(pending);
-    await loadApproved();
+    const items = await res.json();
+    renderFails(items);
   }
 
-  sortUpvotesBtn.addEventListener("click", () => {
-    sortMode = "upvotes";
-    renderApproved();
-  });
-  sortNewestBtn.addEventListener("click", () => {
-    sortMode = "newest";
-    renderApproved();
+  loginBtn.addEventListener("click", async () => {
+    const pwd = document.getElementById("adminPassword").value.trim();
+    if (!pwd) { loginError.textContent = "Enter a password"; return; }
+    loginError.textContent = "";
+
+    const ok = await login(pwd);
+    if (!ok) { loginError.textContent = "Invalid password"; return; }
+
+    setLoggedInUI();
+    await loadFails();
   });
 
-  // Try auto-login
-  if (adminSecret) {
-    tryLoadDashboard();
-  } else {
+  logoutBtn.addEventListener("click", async () => {
+    await logout();
     setLoggedOutUI();
-  }
+  });
+
+  refreshBtn.addEventListener("click", loadFails);
+
+  // Auto-check session
+  (async () => {
+    const s = await getStatus();
+    if (s.isAdmin) {
+      setLoggedInUI();
+      await loadFails();
+    } else {
+      setLoggedOutUI();
+    }
+  })();
 </script>
 </body>
 </html>
+
 
 
