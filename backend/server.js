@@ -101,23 +101,34 @@ app.get("/health", (_, res) => {
 /* =====================
    ADMIN AUTH
 ===================== */
-app.post("/api/admin/login", (req, res) => {
-  const password = String(req.body.password || "");
-  if (password !== ADMIN_SECRET) {
-    return res.status(401).json({ ok: false, error: "Invalid password" });
+// -------- Admin fail management --------
+
+// List fails for admin (same as public, but fine)
+app.get("/api/admin/fails", requireAdmin, (req, res) => {
+  res.json(readVideos());
+});
+
+// Delete a fail (removes from videos.json and deletes file)
+app.delete("/api/admin/fails/:id", requireAdmin, (req, res) => {
+  const id = req.params.id;
+  const videos = readVideos();
+  const idx = videos.findIndex(v => v.id === id);
+  if (idx === -1) return res.status(404).json({ ok: false, error: "Not found" });
+
+  const [removed] = videos.splice(idx, 1);
+  writeVideos(videos);
+
+  // best-effort delete file from disk
+  try {
+    const fullPath = path.join(uploadsDir, removed.filename);
+    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+  } catch (e) {
+    console.warn("Could not delete file:", e?.message || e);
   }
-  req.session.isAdmin = true;
-  req.session.save(() => res.json({ ok: true }));
+
+  res.json({ ok: true });
 });
 
-app.post("/api/admin/logout", (req, res) => {
-  req.session.isAdmin = false;
-  req.session.save(() => res.json({ ok: true }));
-});
-
-app.get("/api/admin/status", (req, res) => {
-  res.json({ ok: true, isAdmin: !!req.session.isAdmin });
-});
 
 /* =====================
    UPLOAD FAIL (FIXED)
