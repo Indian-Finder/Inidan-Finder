@@ -469,33 +469,60 @@
     viewFailBtn.classList.remove("disabled");
   }
 
-  function updateUpvoteButton() {
-    if (!currentItem || !currentItem.id) {
-      upvoteBtn.disabled = true;
-      upvoteBtn.textContent = "⬆️ Upvote · 0";
-      return;
-    }
-    upvoteBtn.disabled = false;
-    upvoteBtn.textContent = `⬆️ Upvote · ${currentItem.votes || 0}`;
+function updateUpvoteButton() {
+  if (!currentItem || !currentItem.id) {
+    upvoteBtn.disabled = true;
+    upvoteBtn.textContent = "⬆️ Upvote · 0";
+    return;
   }
+  upvoteBtn.disabled = false;
+  upvoteBtn.textContent = `⬆️ Upvote · ${currentItem.votes || 0}`;
+}
 
-  async function handleUpvote() {
-    if (!currentItem?.id) return;
+let upvoteInFlight = false;
 
-    // Prefer real backend upvotes if available
-    try {
-      const r = await fetch(`${API_BASE}/api/fails/${encodeURIComponent(currentItem.id)}/upvote`, {
+async function handleUpvote() {
+  if (!currentItem?.id || upvoteInFlight) return;
+
+  upvoteInFlight = true;
+  upvoteBtn.disabled = true;
+
+  // ✅ optimistic UI
+  currentItem.votes = (currentItem.votes || 0) + 1;
+  updateUpvoteButton();
+
+  try {
+    const r = await fetch(
+      `${API_BASE}/api/fails/${encodeURIComponent(currentItem.id)}/upvote`,
+      {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
-      });
-      if (r.ok) {
-        const j = await r.json();
-        if (j && typeof j.votes === "number") currentItem.votes = j.votes;
-        updateUpvoteButton();
-        showToast("⬆️ Upvoted!");
-        return;
+        headers: { "Content-Type": "application/json" },
       }
-    } catch {}
+    );
+
+    if (!r.ok) throw new Error(`Upvote failed: ${r.status}`);
+
+    const j = await r.json();
+    if (j && typeof j.votes === "number") {
+      currentItem.votes = j.votes; // ✅ server truth
+      updateUpvoteButton();
+    }
+
+    showToast("⬆️ Upvoted!");
+  } catch (e) {
+    console.error(e);
+
+    // rollback optimistic bump
+    currentItem.votes = Math.max(0, (currentItem.votes || 1) - 1);
+    updateUpvoteButton();
+
+    showToast("⚠️ Upvote failed");
+  } finally {
+    upvoteInFlight = false;
+    upvoteBtn.disabled = false;
+  }
+}
+
 
     // Fallback: local bump
     currentItem.votes = (currentItem.votes || 0) + 1;
