@@ -1,282 +1,555 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Indian Finder</title>
+  <meta charset="utf-8" />
+  <title>Indian Finder.com – Finding Indian Fails</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <style>
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      background: #0b1222;
-      color: #e5e7eb;
+    :root {
+      --text: #f9fafb;
+      --muted: #9ca3af;
+      --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.5);
+      --radius-lg: 999px;
+      --transition-fast: 0.18s ease-out;
     }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
+      background:
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.7)),
+        url("india-flag.png");
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .shell { width: 100%; max-width: 1100px; }
+
+    .card {
+      background: rgba(15, 23, 42, 0.9);
+      border-radius: 2rem;
+      box-shadow: var(--shadow-soft);
+      padding: 28px 24px 24px;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      backdrop-filter: blur(12px);
+    }
+
     header {
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      align-items: center;
-      padding: 18px 24px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-    h1 { margin: 0; font-weight: 900; letter-spacing: .05em; }
-    .header-right {
-      display: flex;
       gap: 12px;
-      align-items: center;
+      margin-bottom: 20px;
     }
+
+    h1 {
+      font-size: 1.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
     .badge {
-      background: rgba(255,255,255,.08);
+      background: rgba(255, 255, 255, 0.08);
       padding: 6px 12px;
       border-radius: 999px;
-      font-size: .85rem;
-      font-weight: 700;
-    }
-    .xconnect-btn {
-      text-decoration: none;
-      color: #e5e7eb;
-      border: 1px solid rgba(255,255,255,.18);
-      padding: 8px 14px;
-      border-radius: 999px;
-      font-weight: 700;
-      background: rgba(255,255,255,.06);
+      font-size: 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .layout {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 24px;
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr);
+      gap: 18px;
     }
 
-    .hero {
-      font-size: 2rem;
-      font-weight: 900;
-      margin-bottom: 10px;
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
     }
-    .hero-sub {
-      color: #9ca3af;
-      margin-bottom: 18px;
-      line-height: 1.5;
-    }
+
+    .hero { font-size: 1.4rem; line-height: 1.3; margin-bottom: 10px; }
+    .hero-sub { font-size: 0.9rem; color: var(--muted); margin-bottom: 18px; }
 
     .btn {
+      background: linear-gradient(135deg, #f97316, #ec4899);
+      padding: 12px 26px;
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      border: none;
+      font-size: 0.98rem;
+      font-weight: 600;
+      color: #0f172a;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      align-items: center;
+      transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+      box-shadow: 0 14px 32px rgba(248, 113, 113, 0.55);
+      margin-bottom: 10px;
+    }
+    .btn:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 18px 40px rgba(248, 113, 113, 0.7);
+    }
+    .btn:active {
+      transform: translateY(0) scale(0.99);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.9);
+    }
+
+    .secondary-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .secondary-btn {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
-      background: linear-gradient(90deg,#ff7a18,#ff4ecd);
-      border: none;
-      padding: 14px 22px;
+      justify-content: center;
+      padding: 8px 18px;
       border-radius: 999px;
-      font-size: 1rem;
-      font-weight: 900;
-      cursor: pointer;
-      color: #0b1222;
-      margin-bottom: 12px;
-    }
-
-    .secondary-btn {
-      display: inline-block;
-      margin-right: 10px;
-      margin-top: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      font-size: 0.85rem;
+      color: var(--text);
       text-decoration: none;
-      color: #e5e7eb;
-      border: 1px solid rgba(255,255,255,.18);
-      padding: 8px 14px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.06);
-      font-weight: 700;
+      background: rgba(15, 23, 42, 0.9);
+      transition: background 0.18s ease-out, border-color 0.18s ease-out;
+      margin-bottom: 8px;
+    }
+    .secondary-btn:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(148, 163, 184, 0.9);
     }
 
-    footer {
-      margin-top: 14px;
-      color: #9ca3af;
-      font-size: .85rem;
-    }
+    footer { font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
 
     .player-card {
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 20px;
+      background: rgba(10, 15, 30, 0.96);
       padding: 14px;
+      border-radius: 1.4rem;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
 
     .media-shell {
       width: 100%;
       aspect-ratio: 16 / 9;
-      background: #000;
-      border-radius: 14px;
+      border-radius: 1rem;
+      overflow: hidden;
+      background: #020617;
       display: flex;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
-      cursor: pointer;
+      position: relative;
     }
 
-    video, img {
+    .media-shell video, .media-shell img {
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      display: block;
     }
+    .media-shell video { object-fit: cover; }
+    .media-shell img { object-fit: contain; background-color: #000; }
 
     .placeholder {
-      color: #9ca3af;
       text-align: center;
-      font-weight: 700;
+      font-size: 0.88rem;
+      color: var(--muted);
+      padding: 12px;
     }
+    .placeholder-emoji { font-size: 2rem; margin-bottom: 6px; }
 
     .video-meta {
+      font-size: 0.8rem;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-top: 10px;
+      justify-content: space-between;
+      color: var(--muted);
+      gap: 8px;
+    }
+    .video-meta-left { min-width: 0; }
+    .video-title {
+      font-size: 0.86rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .video-author { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+    .video-meta-right { display: flex; align-items: center; gap: 6px; }
+
+    .count-pill {
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      font-size: 0.78rem;
     }
 
-    .upvote-btn {
-      border: 1px solid rgba(255,255,255,.18);
-      background: rgba(255,255,255,.06);
-      color: #e5e7eb;
-      padding: 8px 14px;
+    .pill-btn {
       border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--text);
+      font-size: 0.75rem;
+      padding: 4px 10px;
       cursor: pointer;
-      font-weight: 800;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pill-btn[aria-disabled="true"], .pill-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+      pointer-events: none;
     }
 
     .toast {
       position: fixed;
+      left: 50%;
       bottom: 24px;
-      right: 24px;
-      background: #111827;
-      border: 1px solid rgba(255,255,255,.18);
-      padding: 10px 16px;
+      transform: translateX(-50%) translateY(120%);
+      padding: 8px 14px;
       border-radius: 999px;
+      background: rgba(15, 23, 42, 0.97);
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      color: var(--muted);
+      font-size: 0.8rem;
       opacity: 0;
-      transition: opacity .2s;
+      transition: transform 0.25s ease-out, opacity 0.25s ease-out;
+      z-index: 40;
     }
-    .toast.show { opacity: 1; }
+    .toast.visible { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    .header-right{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .xconnect-btn{
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.16);
+      color: #fff;
+      text-decoration:none;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      transition: transform .12s ease, background .12s ease, border-color .12s ease;
+      white-space:nowrap;
+    }
+    .xconnect-btn:hover{
+      background: rgba(255,255,255,0.16);
+      border-color: rgba(255,255,255,0.22);
+      transform: translateY(-1px);
+    }
+    .xconnect-btn.connected{
+      background: rgba(34,197,94,0.18);
+      border-color: rgba(34,197,94,0.35);
+    }
+    .xconnect-status{
+      font-size: 0.78rem;
+      opacity: 0.9;
+      white-space:nowrap;
+    }
   </style>
 </head>
 
 <body>
+  <div class="shell">
+    <div class="card">
+      <header>
+        <h1>Indian Finder.com</h1>
+        <div class="header-right">
+          <div class="badge">🇮🇳 / 🎬 / 😂 <span>Videos + Memes, one button</span></div>
+          <a class="xconnect-btn" href="#" id="xConnectBtn">Connect to 𝕏</a>
+          <span class="xconnect-status" id="xStatus"></span>
+        </div>
+      </header>
 
-<header>
-  <h1>INDIAN FINDER</h1>
-  <div class="header-right">
-    <div class="badge">🇮🇳 🎬 😂 <span>Videos + Memes, one button</span></div>
-    <a class="xconnect-btn" href="#" id="xConnectBtn">Connect to X</a>
-  </div>
-</header>
+      <div class="layout">
+        <!-- LEFT -->
+        <div>
+          <div class="hero">Press the button.<br/>Watch someone else fail.</div>
+          <div class="hero-sub">
+            Each click shows a random <strong>video fail</strong> or <strong>image meme</strong>
+            from the vault. We support MP4, JPG &amp; PNG.
+          </div>
 
-<div class="layout">
+          <button class="btn" id="showFailBtn">
+            <span>🎬</span><span>Show me a fail</span><span>💥</span>
+          </button>
 
-  <!-- LEFT -->
-  <div>
-    <div class="hero">Press the button.<br/>Watch someone else fail.</div>
-    <div class="hero-sub">
-      Each click shows a random <strong>video fail</strong> or
-      <strong>image meme</strong> from the vault. We support MP4, JPG & PNG.
+          <div class="secondary-row">
+            <a class="secondary-btn" href="leaderboard.html">🏆 Leaderboard</a>
+            <a class="secondary-btn" href="submit.html">⬆️ Upload your fail</a>
+          </div>
+
+          <footer>Upload fails to help power the vault. New uploads drop straight into the rotation.</footer>
+        </div>
+
+        <!-- RIGHT -->
+        <div class="player-card">
+          <div class="media-shell" id="mediaShell">
+            <div class="placeholder" id="placeholder">
+              <div class="placeholder-emoji">🤕</div>
+              Tap “Show me a fail” to see your first video or meme.
+            </div>
+          </div>
+
+          <div class="video-meta">
+            <div class="video-meta-left">
+              <div class="video-title" id="videoTitle">No fail loaded yet</div>
+              <div class="video-author" id="videoAuthor"></div>
+            </div>
+
+            <div class="video-meta-right">
+              <button class="pill-btn" id="upvoteBtn" disabled>⬆️ Upvote · 0</button>
+
+              <a class="pill-btn" id="viewFailBtn" href="#" aria-disabled="true">🔎 View fail</a>
+
+              <span class="count-pill">
+                <span id="videoIndex">0</span>/<span id="videoTotal">0</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast" id="toast">⚡ New fail loaded</div>
     </div>
-
-    <button class="btn" id="showFailBtn">🎬 Show me a fail 💥</button><br/>
-
-    <a class="secondary-btn" href="leaderboard.html">🏆 Leaderboard</a>
-    <a class="secondary-btn" href="submit.html">⬆️ Upload your fail</a>
-
-    <footer>
-      Upload fails to help power the vault. New uploads drop straight into the rotation.
-    </footer>
   </div>
 
-  <!-- RIGHT -->
-  <div class="player-card">
-    <div class="media-shell" id="mediaShell">
-      <div class="placeholder">Tap “Show me a fail”</div>
-    </div>
+  <script>
+    // IMPORTANT: this MUST be your Railway backend base (no trailing slash)
+    const API_BASE = "https://inidan-finder-production-c13b.up.railway.app";
 
-    <div class="video-meta">
-      <div id="videoTitle">No fail loaded yet</div>
-      <button class="upvote-btn" id="upvoteBtn" disabled>⬆️ Upvote · 0</button>
-    </div>
-  </div>
+    // State
+    let MEDIA_ITEMS = [];
+    let mediaLoaded = false;
+    let currentItem = null;
+    let lastIndex = -1;
 
-</div>
+    // Elements
+    const showFailBtn = document.getElementById("showFailBtn");
+    const mediaShell = document.getElementById("mediaShell");
+    const placeholder = document.getElementById("placeholder");
+    const videoTitle = document.getElementById("videoTitle");
+    const videoAuthor = document.getElementById("videoAuthor");
+    const upvoteBtn = document.getElementById("upvoteBtn");
+    const viewFailBtn = document.getElementById("viewFailBtn");
+    const videoIndex = document.getElementById("videoIndex");
+    const videoTotal = document.getElementById("videoTotal");
+    const toast = document.getElementById("toast");
 
-<div class="toast" id="toast">New fail loaded</div>
+    // X connect
+    const xConnectBtn = document.getElementById("xConnectBtn");
+    const xStatusEl = document.getElementById("xStatus");
 
-<script>
-const API_BASE = "https://inidan-finder-production-c13b.up.railway.app";
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add("visible");
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toast.classList.remove("visible"), 1400);
+    }
 
-let MEDIA_ITEMS = [];
-let currentItem = null;
+    function clearMediaShell() {
+      // remove any existing media nodes (keep placeholder)
+      const nodes = Array.from(mediaShell.children);
+      for (const n of nodes) {
+        if (n !== placeholder) n.remove();
+      }
+      placeholder.style.display = "";
+    }
 
-const showBtn = document.getElementById("showFailBtn");
-const mediaShell = document.getElementById("mediaShell");
-const upvoteBtn = document.getElementById("upvoteBtn");
-const videoTitle = document.getElementById("videoTitle");
-const toast = document.getElementById("toast");
+    function setViewFailEnabled(enabled, href) {
+      if (!enabled) {
+        viewFailBtn.setAttribute("aria-disabled", "true");
+        viewFailBtn.href = "#";
+      } else {
+        viewFailBtn.removeAttribute("aria-disabled");
+        viewFailBtn.href = href;
+      }
+    }
 
-function showToast(text) {
-  toast.textContent = text;
-  toast.classList.add("show");
-  setTimeout(() => toast.classList.remove("show"), 1600);
-}
+    function updateMetaUI() {
+      const total = MEDIA_ITEMS.length;
+      videoTotal.textContent = String(total);
+      if (!currentItem) {
+        videoIndex.textContent = "0";
+        videoTitle.textContent = "No fail loaded yet";
+        videoAuthor.textContent = "";
+        upvoteBtn.disabled = true;
+        upvoteBtn.textContent = "⬆️ Upvote · 0";
+        setViewFailEnabled(false);
+        return;
+      }
+      videoTitle.textContent = currentItem.title || "Fail";
+      videoAuthor.textContent = currentItem.author ? ("by " + currentItem.author) : "";
+      upvoteBtn.disabled = false;
+      upvoteBtn.textContent = `⬆️ Upvote · ${currentItem.votes || 0}`;
+      setViewFailEnabled(true, `fail.html?id=${encodeURIComponent(currentItem.id)}`);
+    }
 
-async function loadFails() {
-  const r = await fetch(`${API_BASE}/api/fails`, { cache: "no-store" });
-  MEDIA_ITEMS = await r.json();
-}
+    function getRandomIndex() {
+      const n = MEDIA_ITEMS.length;
+      if (n <= 0) return -1;
+      if (n === 1) return 0;
 
-function renderItem(item) {
-  mediaShell.innerHTML = "";
-  const url = item.url.startsWith("http") ? item.url : API_BASE + item.url;
+      // avoid immediate repeats
+      let idx = Math.floor(Math.random() * n);
+      let guard = 0;
+      while (idx === lastIndex && guard < 8) {
+        idx = Math.floor(Math.random() * n);
+        guard++;
+      }
+      return idx;
+    }
 
-  let el;
-  if (item.mediaType === "image") {
-    el = document.createElement("img");
-    el.src = url;
-  } else {
-    el = document.createElement("video");
-    el.src = url;
-    el.controls = true;
-    el.autoplay = true;
-    el.loop = true;
-  }
+    async function fetchMedia() {
+      mediaLoaded = false;
+      try {
+        const r = await fetch(`${API_BASE}/api/media`, { credentials: "include" });
+        const data = await r.json();
+        MEDIA_ITEMS = Array.isArray(data) ? data : [];
+        mediaLoaded = true;
+        videoTotal.textContent = String(MEDIA_ITEMS.length);
+      } catch (e) {
+        console.error("fetchMedia error", e);
+        MEDIA_ITEMS = [];
+        mediaLoaded = true;
+      }
+    }
 
-  mediaShell.appendChild(el);
-  videoTitle.textContent = item.title || "Fail";
-  upvoteBtn.disabled = false;
-  upvoteBtn.textContent = `⬆️ Upvote · ${item.votes || 0}`;
+    function renderItem(item) {
+      clearMediaShell();
 
-  mediaShell.onclick = () => {
-    window.location.href = `fail.html?id=${encodeURIComponent(item.id)}`;
-  };
-}
+      const src = item.src; // backend returns /uploads/...
+      const fullSrc = src.startsWith("http") ? src : `${API_BASE}${src}`;
 
-showBtn.onclick = async () => {
-  if (!MEDIA_ITEMS.length) await loadFails();
-  if (!MEDIA_ITEMS.length) return alert("No fails yet!");
+      if (item.mediaType === "image") {
+        const img = document.createElement("img");
+        img.src = fullSrc;
+        img.alt = item.title || "Fail image";
+        img.onload = () => showToast("🖼️ New fail loaded");
+        img.onerror = () => showToast("⚠️ Image failed to load");
+        mediaShell.appendChild(img);
+      } else {
+        const vid = document.createElement("video");
+        vid.src = fullSrc;
+        vid.controls = true;
+        vid.playsInline = true;
+        vid.autoplay = true;
+        vid.muted = false;
+        vid.onloadeddata = () => showToast("🎬 New fail loaded");
+        vid.onerror = () => showToast("⚠️ Video failed to load");
+        mediaShell.appendChild(vid);
+      }
 
-  const item = MEDIA_ITEMS[Math.floor(Math.random() * MEDIA_ITEMS.length)];
-  currentItem = item;
-  renderItem(item);
-  showToast("New fail loaded");
-};
+      placeholder.style.display = "none";
+    }
 
-upvoteBtn.onclick = async () => {
-  if (!currentItem) return;
+    async function handleShowFail() {
+      if (!mediaLoaded) {
+        alert("Still loading fails… try again in a second.");
+        return;
+      }
+      if (!MEDIA_ITEMS.length) {
+        alert("No fails yet. Upload one to contribute!");
+        return;
+      }
 
-  currentItem.votes = (currentItem.votes || 0) + 1;
-  upvoteBtn.textContent = `⬆️ Upvote · ${currentItem.votes}`;
+      const idx = getRandomIndex();
+      if (idx === -1) return;
+      lastIndex = idx;
 
-  await fetch(`${API_BASE}/api/fails/${currentItem.id}/upvote`, { method: "POST" });
-};
-</script>
+      currentItem = MEDIA_ITEMS[idx];
 
+      // UI index is 1-based
+      videoIndex.textContent = String(idx + 1);
+
+      renderItem(currentItem);
+      updateMetaUI();
+    }
+
+    async function handleUpvote() {
+      if (!currentItem?.id) return;
+
+      upvoteBtn.disabled = true;
+      try {
+        const r = await fetch(`${API_BASE}/api/media/${encodeURIComponent(currentItem.id)}/upvote`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({})
+        });
+        const data = await r.json();
+        if (data && data.ok) {
+          currentItem.votes = data.votes;
+          upvoteBtn.textContent = `⬆️ Upvote · ${currentItem.votes || 0}`;
+          showToast("⬆️ Upvoted");
+        } else {
+          showToast("⚠️ Upvote failed");
+        }
+      } catch (e) {
+        console.error("upvote error", e);
+        showToast("⚠️ Upvote failed");
+      } finally {
+        upvoteBtn.disabled = false;
+      }
+    }
+
+    async function refreshXStatus() {
+      try {
+        const r = await fetch(`${API_BASE}/api/x/status`, { credentials: "include" });
+        const data = await r.json();
+        if (data.connected) {
+          xConnectBtn.classList.add("connected");
+          xConnectBtn.textContent = "Connected ✓";
+          xConnectBtn.href = "#";
+          xStatusEl.textContent = data.username ? `@${data.username}` : "Connected";
+        } else {
+          xConnectBtn.classList.remove("connected");
+          xConnectBtn.textContent = "Connect to 𝕏";
+          xConnectBtn.href = "#";
+          xStatusEl.textContent = "";
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    function connectToX(e) {
+      e.preventDefault();
+      window.location.href = `${API_BASE}/api/x/connect`;
+    }
+
+    // Wire up
+    showFailBtn.addEventListener("click", handleShowFail);
+    upvoteBtn.addEventListener("click", handleUpvote);
+    xConnectBtn.addEventListener("click", connectToX);
+
+    // Boot
+    (async function init() {
+      setViewFailEnabled(false);
+      await fetchMedia();
+      updateMetaUI();
+      refreshXStatus();
+    })();
+  </script>
 </body>
 </html>
+
 
 
 
